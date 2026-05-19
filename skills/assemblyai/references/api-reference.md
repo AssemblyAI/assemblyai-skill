@@ -56,7 +56,7 @@ Submit an audio file for transcription. Send a JSON body with the parameters bel
 | `redact_pii_audio_options` | object | `override_audio_redaction_method: "silence"` replaces PII with silence instead of default beep. `return_redacted_no_speech_audio: true` also redacts non-speech segments. |
 | `redact_pii_return_unredacted` | boolean | When `true`, returns the original unredacted transcript alongside the redacted one in a single request. Response then includes `unredacted_text`, `unredacted_words`, and `unredacted_utterances`. Default `false`. |
 | `filter_profanity` | boolean | Filter profanity from transcript text. Default `false`. |
-| `disfluencies` | boolean | Include disfluencies (um, uh, etc.) in transcript. Default `false`. Universal-2 only. |
+| `disfluencies` | boolean | Include disfluencies (um, uh, etc.) in transcript. Default `false`. Supported on Universal-3 Pro and Universal-2. U3 Pro can also preserve disfluencies via prompting for finer-grained control. |
 | `multichannel` | boolean | Enable multichannel transcription. Default `false`. |
 | `custom_spelling` | array | Array of custom spelling rules. See Custom Spelling section. |
 | `webhook_url` | string | URL to receive a webhook when transcription completes. |
@@ -255,7 +255,7 @@ Use `language_detection_options` to refine detection:
 
 Full list of supported PII policy values for `redact_pii_policies`:
 
-`account_number`, `banking_information`, `blood_type`, `credit_card_cvv`, `credit_card_expiration`, `credit_card_number`, `date`, `date_interval`, `date_of_birth`, `drivers_license`, `drug`, `duration`, `email_address`, `event`, `filename`, `gender_sexuality`, `healthcare_number`, `injury`, `ip_address`, `language`, `location`, `marital_status`, `medical_condition`, `medical_process`, `money_amount`, `nationality`, `number_sequence`, `occupation`, `organization`, `passport_number`, `password`, `person_age`, `person_name`, `phone_number`, `physical_attribute`, `political_affiliation`, `religion`, `statistics`, `time`, `url`, `us_social_security_number`, `username`, `vehicle_id`, `zodiac_sign`
+`account_number`, `banking_information`, `blood_type`, `credit_card_cvv`, `credit_card_expiration`, `credit_card_number`, `date`, `date_interval`, `date_of_birth`, `drivers_license`, `drug`, `duration`, `email_address`, `event`, `filename`, `gender`, `gender_sexuality`, `healthcare_number`, `injury`, `ip_address`, `language`, `location`, `location_address`, `location_address_street`, `location_city`, `location_coordinate`, `location_country`, `location_state`, `location_zip`, `marital_status`, `medical_condition`, `medical_process`, `money_amount`, `nationality`, `number_sequence`, `occupation`, `organization`, `organization_medical_facility`, `passport_number`, `password`, `person_age`, `person_name`, `phone_number`, `physical_attribute`, `political_affiliation`, `religion`, `sexuality`, `statistics`, `time`, `url`, `us_social_security_number`, `username`, `vehicle_id`, `zodiac_sign`
 
 ---
 
