@@ -98,11 +98,12 @@ See `references/llm-gateway.md` for models, tool calling, structured outputs, an
 | PII audio redaction method | `override_audio_redaction_method: "silence"` replaces PII with silence instead of default beep |
 | Language detection | Requires minimum 15 seconds of spoken audio for reliable results |
 | LLM Gateway EU region | Only Anthropic Claude and Google Gemini models available — OpenAI models are NOT supported in EU |
-| Disfluencies | `disfluencies: true` works on Universal-2 only; for U3 Pro, use prompting instead |
+| Disfluencies | `disfluencies: true` works on Universal-3 Pro and Universal-2. U3 Pro can also preserve disfluencies via prompting for finer-grained control |
 | Medical Mode unsupported language | API silently skips Medical Mode and does not charge for it — check for warning in response |
 | Voice Agent API URL | The Voice Agent endpoint is `wss://agents.assemblyai.com/v1/ws` — NOT `/v1/voice` (renamed April 2026), `/v1/realtime` (older), or `speech-to-speech.us.assemblyai.com` (very old) |
 | Voice Agent `tool.call` field | The argument dict is named `arguments`, not `args` (renamed April 2026) |
-| Voice Agent turn detection fields | Use `min_silence` (default 600ms) and `max_silence` (default 1500ms) under `session.input.turn_detection` — `min_turn_silence`/`max_turn_silence` are the streaming/LiveKit/Pipecat field names, not Voice Agent API |
+| Voice Agent turn detection fields | Use `min_silence` (default 1000ms) and `max_silence` (default 3000ms) under `session.input.turn_detection` — `min_turn_silence`/`max_turn_silence` are the streaming/LiveKit/Pipecat field names, not Voice Agent API |
+| Voice Agent voice change | `session.output` (including `voice`) is **immutable** after the first `session.update` is applied — pick the voice before `session.ready`, you cannot change it mid-conversation |
 
 ## Common Mistakes
 

@@ -85,6 +85,30 @@ Supports:
 - User and assistant messages
 - `prompt` shorthand — pass a simple string instead of a `messages` array for single-turn requests
 - `stream: true` — stream responses as server-sent events (SSE). **OpenAI models only.**
+- `transcript_id` — top-level field that injects a transcript's text into the prompt (see [Inject a Transcript by ID](#inject-a-transcript-by-id) below)
+- `post_processing_steps` — ordered server-side fixes applied after generation. Currently supports `{"type": "json-repair"}` to automatically fix malformed JSON in content and tool call arguments
+
+### Inject a Transcript by ID
+
+Pass `transcript_id` at the top level of the request to have the API replace the literal tag `{{ transcript }}` in your messages with the transcript's `text` field. This avoids fetching the transcript yourself before calling the LLM Gateway — just transcribe, then pass the ID.
+
+```bash
+curl -X POST "https://llm-gateway.assemblyai.com/v1/chat/completions" \
+  -H "Authorization: YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "claude-sonnet-4-6",
+    "messages": [
+      {"role": "user", "content": "Summarize this transcript: {{ transcript }}"}
+    ],
+    "transcript_id": "YOUR_TRANSCRIPT_ID"
+  }'
+```
+
+Important rules:
+- Only the **first occurrence** of `{{ transcript }}` in the **first message that contains it** is substituted — additional tags or tags in later messages are left as-is.
+- The tag must be exactly `{{ transcript }}` (with the spaces). Variants like `{{transcript}}` or `{{ TRANSCRIPT }}` are **not** substituted.
+- The endpoint returns **404** if the transcript ID does not exist or belongs to a different account.
 
 ### cURL Example
 

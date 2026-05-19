@@ -77,8 +77,8 @@ Sessions are preserved for **30 seconds** after disconnection. Reconnect using `
       "keyterms": ["Acme", "OrderPro"],
       "turn_detection": {
         "vad_threshold": 0.5,
-        "min_silence": 600,
-        "max_silence": 1500,
+        "min_silence": 1000,
+        "max_silence": 3000,
         "interrupt_response": true
       }
     },
@@ -111,8 +111,8 @@ All fields under `session.input.turn_detection` — **note the field names diffe
 | Field                | Type    | Default | Description                                                                |
 | -------------------- | ------- | ------- | -------------------------------------------------------------------------- |
 | `vad_threshold`      | float   | `0.5`   | Speech detection sensitivity (0.0–1.0). Lower = more sensitive to speech.  |
-| `min_silence`        | integer | `600`   | Minimum silence to consider a confident end-of-turn, in milliseconds.      |
-| `max_silence`        | integer | `1500`  | Maximum silence before forcing end-of-turn, in milliseconds.               |
+| `min_silence`        | integer | `1000`  | Minimum silence to consider a confident end-of-turn, in milliseconds.      |
+| `max_silence`        | integer | `3000`  | Maximum silence before forcing end-of-turn, in milliseconds.               |
 | `interrupt_response` | boolean | `true`  | Whether user speech interrupts the agent. Set `false` to disable barge-in. |
 
 ### Tool Call Pattern
@@ -152,11 +152,11 @@ On user barge-in, the server emits `reply.done` with `status: "interrupted"` and
 | **iOS** (AVAudioEngine)  | `playerNode.stop()` then `playerNode.play()`                                              |
 | **Android** (AudioTrack) | `audioTrack.pause()`, `audioTrack.flush()`, then `audioTrack.play()`                      |
 
-For browser apps, enable echo cancellation via `getUserMedia({ audio: { echoCancellation: true } })` to prevent the agent from interrupting itself. For terminal/desktop apps, use headphones — native audio APIs (PortAudio, sounddevice) don't include AEC.
+For browser apps, enable echo cancellation via `getUserMedia({ audio: { echoCancellation: true, noiseSuppression: false } })`. **Disable** browser-level `noiseSuppression` and skip Krisp/RNNoise/BVC — the Voice Agent API runs server-side voice focus (noise cancellation) by default; stacking client-side denoising on top adds artifacts that hurt accuracy more than the original noise. For terminal/desktop apps, use headphones — native audio APIs (PortAudio, sounddevice) don't include AEC.
 
 ### Available Voices
 
-Set a voice via `session.output.voice` in `session.update`. Can be changed mid-conversation. Default is `ivy`.
+Set a voice via `session.output.voice` in `session.update` **before `session.ready`**. `session.output` is immutable once the session is established — the voice **cannot be changed mid-conversation**. Default is `ivy`.
 
 **English voices** (US unless noted):
 `ivy`, `james`, `tyler`, `autumn`, `sam`, `mia`, `bella`, `david`, `jack`, `kyle`, `helen`, `martha`, `river`, `emma`, `victor`, `eleanor`; `sophie`, `oliver` (UK)

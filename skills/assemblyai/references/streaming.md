@@ -33,6 +33,9 @@ Connect via query parameter: `?token=API_KEY` or use a temporary token (see Temp
 | `redact_pii_policies` | PII entity types to redact. Pass a comma-separated string (e.g. `person_name,phone_number`) over the raw WebSocket or an array via the SDK. Default: all. |
 | `redact_pii_sub` | Replacement scheme: `hash` (default — replaces with `#` chars) or `entity_name` (replaces with `[ENTITY_TYPE]`). |
 | `include_partial_turns` | Whether to include partial (non-final) turns. Defaults to `true` normally, but **`false` automatically** when `redact_pii` is `true` so unredacted text never reaches the client. |
+| `filter_profanity` | Filter profanity from transcripts (replaces with `***`). Default `false`. |
+| `interruption_delay` | **u3-rt-pro only.** Integer milliseconds (0–1000, default `500`). How soon the first partial is emitted — lower = faster TTFT and earlier barge-in but more false interruptions; higher = more confident interruptions but slower partials. Minimum effective turn duration is `300ms`. |
+| `vad_threshold` | **u3-rt-pro only.** Float 0.0–1.0 (default `0.3`). Confidence threshold for classifying audio frames as silence. Increase in noisy environments to reduce false speech detection. |
 | `llm_gateway` | JSON-stringified LLM Gateway config — triggers LLM analysis on each completed turn, results delivered as `LLMGatewayResponse` messages |
 
 ### Messages Sent (Client to Server)
@@ -104,7 +107,10 @@ A low `min_turn_silence` value can split entities like phone numbers across turn
 
 ## Dynamic Configuration (UpdateConfiguration)
 
-Change `keyterms_prompt`, `prompt`, `min_turn_silence`, and `max_turn_silence` mid-stream without reconnecting.
+Change settings mid-stream without reconnecting. Fields are model-dependent:
+
+- **Universal Streaming:** `keyterms_prompt`, `min_turn_silence`, `max_turn_silence`
+- **u3-rt-pro:** `prompt`, `keyterms_prompt`, `min_turn_silence`, `max_turn_silence`, `continuous_partials`, `vad_threshold`, `interruption_delay`
 
 Send a JSON message:
 
@@ -114,7 +120,9 @@ Send a JSON message:
   "keyterms_prompt": ["AssemblyAI", "LeMUR"],
   "prompt": "The caller is discussing a billing issue.",
   "min_turn_silence": 500,
-  "max_turn_silence": 1500
+  "max_turn_silence": 1500,
+  "vad_threshold": 0.4,
+  "interruption_delay": 300
 }
 ```
 
