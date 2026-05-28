@@ -87,6 +87,29 @@ Poll this endpoint until the response `status` field is `completed` or `error`.
 - `status: "completed"` — transcription finished; full result available
 - `status: "error"` — transcription failed; check `error` field for details
 
+### Response `metadata`
+
+The transcript response may include an optional `metadata` object with additional information about how the request was processed. The field is **omitted entirely** when there is nothing to report.
+
+```json
+{
+  "id": "...",
+  "status": "completed",
+  "text": "...",
+  "metadata": {
+    "domain_used": null,
+    "warnings": [
+      { "message": "Medical Mode was requested for language 'ja' but is supported only for en, es, de, fr; skipping (not charged)." }
+    ]
+  }
+}
+```
+
+- `metadata.domain_used` — the domain-specific model that was applied (e.g. `"medical-v1"` for Medical Mode), or `null` if none was used. Always present when `metadata` is present.
+- `metadata.warnings` — array of `{message}` objects describing issues encountered during processing (e.g. Medical Mode skipped for an unsupported language). The field is **omitted** when there are no warnings.
+
+Check `metadata.warnings` after every transcription to catch silent fallbacks (e.g. Medical Mode requested but not applied because the language wasn't supported — the request still completes and is NOT charged for Medical Mode).
+
 ---
 
 ## 4. Export Endpoints

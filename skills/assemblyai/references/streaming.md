@@ -4,9 +4,9 @@
 
 ### Endpoints
 
-- **Default:** `wss://streaming.assemblyai.com/v3/ws`
-- **EU region:** `wss://streaming.eu.assemblyai.com/v3/ws`
-- **US region:** `wss://streaming.us.assemblyai.com/v3/ws`
+- **Default (edge-routed):** `wss://streaming.assemblyai.com/v3/ws` — auto-routes to nearest region
+- **EU region:** `wss://streaming.eu.assemblyai.com/v3/ws` (AWS eu-north-1, Stockholm; moved from eu-west-1 Ireland in March 2026 — endpoint host unchanged)
+- **US region:** `wss://streaming.us.assemblyai.com/v3/ws` (AWS us-west-2 Oregon / us-east-1 Virginia)
 
 ### Authentication
 
@@ -22,7 +22,7 @@ Connect via query parameter: `?token=API_KEY` or use a temporary token (see Temp
 | `sample_rate` | Audio sample rate in Hz (e.g., 16000) |
 | `encoding` | Audio encoding: `pcm_s16le` or `pcm_mulaw` |
 | `end_of_turn_confidence_threshold` | Confidence threshold for turn detection (only affects Universal Streaming, not U3 Pro) |
-| `format_turns` | Set to `true` to enable formatted final transcripts with punctuation, casing, and inverse text normalization (dates, times, phone numbers). Also activates turn-level keyterm boosting for Universal Streaming models. |
+| `format_turns` | Set to `true` to enable formatted final transcripts with punctuation, casing, and inverse text normalization (dates, times, phone numbers). Also activates turn-level keyterm boosting for Universal Streaming models. **Does NOT control digit rendering** — numerals (e.g. "22") are a model behavior, and lexical number output (e.g. "twenty-two") is not supported in streaming. |
 | `prompt` | Natural language transcription instructions (u3-rt-pro only). Mutually exclusive with `keyterms_prompt`. If omitted, a built-in default prompt optimized for turn detection is used automatically. |
 | `keyterms_prompt` | JSON-encoded array of strings (up to 100 terms, max 50 chars each) to bias transcription (u3-rt-pro and Universal Streaming). Mutually exclusive with `prompt`. When passing via URL query param, must be JSON.stringify'd: `keyterms_prompt=["term1","term2"]`. Costs additional $0.04/hr. |
 | `inactivity_timeout` | Seconds of silence before session auto-closes |

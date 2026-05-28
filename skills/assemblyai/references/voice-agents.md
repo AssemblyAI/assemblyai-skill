@@ -18,6 +18,8 @@ wss://agents.assemblyai.com/v1/ws
 Authorization: Bearer YOUR_API_KEY
 ```
 
+**EU endpoint:** `wss://agents.eu.assemblyai.com/v1/ws` (AWS eu-west-1, Dublin) for EU data residency.
+
 For browser-based clients, generate a [temporary token](https://www.assemblyai.com/docs/voice-agents/voice-agent-api/browser-integration) and pass it as a query parameter instead: `wss://agents.assemblyai.com/v1/ws?token=YOUR_TEMP_TOKEN`.
 
 ### Audio Format
@@ -37,9 +39,10 @@ Defaults to `audio/pcm` (24 kHz) on both input and output if omitted. ~50ms chun
 | Event | Description |
 |-------|-------------|
 | `input.audio` | Send audio chunk: `{"type": "input.audio", "audio": "<base64>"}` |
-| `session.update` | Configure session: `system_prompt`, `greeting`, `tools`, `input` (format/keyterms/turn_detection), `output` (voice/format) |
+| `session.update` | Configure session: `system_prompt`, `greeting`, `tools`, `input` (format/keyterms/turn_detection), `output` (voice/format/volume) |
 | `session.resume` | Reconnect to an existing session: `{"type": "session.resume", "session_id": "..."}` |
 | `tool.result` | Return tool call result back to the agent: `{"type": "tool.result", "call_id": "...", "result": "<JSON string>"}` |
+| `reply.create` | Ask the agent to generate a reply right now, optionally with one-shot `instructions`: `{"type": "reply.create", "instructions": "Tell the user we're still processing."}`. Primarily used to deliver status updates during a `hold`-mode tool call |
 
 ### Server Events
 
@@ -84,25 +87,50 @@ Sessions are preserved for **30 seconds** after disconnection. Reconnect using `
     },
     "output": {
       "voice": "ivy",
-      "format": { "encoding": "audio/pcm" }
+      "format": { "encoding": "audio/pcm" },
+      "volume": 100
     },
     "tools": [
       {
         "type": "function",
         "name": "lookup_order",
-        "description": "Look up an order by order ID",
+        "description": "Look up an order by order ID. Call this whenever the user references an order, asks for status, or wants to make changes to an existing order.",
         "parameters": {
           "type": "object",
           "properties": {
-            "order_id": {"type": "string"}
+            "order_id": {"type": "string", "description": "The order ID, e.g. ORD-12345"}
           },
           "required": ["order_id"]
-        }
+        },
+        "execution_mode": "interactive",
+        "timeout_seconds": 120
       }
     ]
   }
 }
 ```
+
+### Tool Definition Fields
+
+| Field | Type | Default | Notes |
+|-------|------|---------|-------|
+| `type` | string | (required) | Always `"function"` |
+| `name` | string | (required) | snake_case, verb-noun. Referenced by `tool.call` |
+| `description` | string | `""` | The model's main signal for **when** to call. State the trigger ("Call this when the user asks about X"); weak descriptions are the #1 cause of tools not being called |
+| `parameters` | object | `{}` | JSON Schema. **NOT validated at `session.update` time** — malformed schemas are accepted silently and break tool calling at runtime |
+| `execution_mode` | string | `"interactive"` | `"interactive"` (agent fills wait with transition phrase) or `"hold"` (agent silent; user replies suppressed). Interactive for sub-5s tools; hold for >10s, transfers, payment |
+| `timeout_seconds` | number | `120` | 1–300. On timeout the agent apologises; the session continues |
+
+`session.tools` updates **replace** the previous array (not merge). Pattern: progressive tool reveal — start with minimal tools, add the next phase's tools after each successful `tool.result`.
+
+### Mutability After `session.ready`
+
+| Field | Mutable? |
+|-------|----------|
+| `system_prompt`, `input.turn_detection`, `input.keyterms` (up to 100 strings), `input.format`, `tools`, `output.volume` | **Yes** |
+| `greeting`, `output.voice`, `output.format` | **No** — raises `immutable_field` |
+
+**Greeting goes straight to TTS, NOT through the LLM.** Whatever string you set is exactly what the user hears, word for word. Don't write meta-greetings like "Greet the user warmly and ask how you can help" — the TTS will literally speak that sentence.
 
 ### Voice Agent Turn Detection
 
@@ -117,29 +145,71 @@ All fields under `session.input.turn_detection` — **note the field names diffe
 
 ### Tool Call Pattern
 
-The key pattern: **accumulate tool results, then send them all in `reply.done`** — not immediately on `tool.call`. The agent generates a transition phrase while waiting; sending tool results too early can cause timing issues.
+**Rule: send `tool.result` when `reply.done` is the latest event you've received.** Not earlier (the agent is still mid-transition-phrase), not later (a new `reply.started` or `input.speech.started` means a turn has begun). The cleanest implementation tracks `last_event` and flushes whenever the rule holds — this handles both fast tools (drain on `reply.done`) and slow tools (drain on `tool.call` completion when `reply.done` already fired).
 
 ```python
+last_event = None
 pending_tools = []
+
+async def flush_if_idle():
+    if last_event != "reply.done" or not pending_tools:
+        return
+    for tool in pending_tools:
+        await ws.send(json.dumps({
+            "type": "tool.result",
+            "call_id": tool["call_id"],
+            "result": json.dumps(tool["result"]),  # JSON string
+        }))
+    pending_tools.clear()
 
 if t == "tool.call":
     name = event["name"]
     arguments = event.get("arguments", {})  # dict — NOT "args"
     result = run_tool(name, arguments)
     pending_tools.append({"call_id": event["call_id"], "result": result})
+    await flush_if_idle()  # slow-tool case: reply.done may already have fired
+
+elif t in ("reply.started", "input.speech.started"):
+    last_event = t  # turn in flight — hold results
 
 elif t == "reply.done":
+    last_event = t
     if event.get("status") == "interrupted":
         pending_tools.clear()  # discard — user barged in
     else:
-        for tool in pending_tools:
-            await ws.send(json.dumps({
-                "type": "tool.result",
-                "call_id": tool["call_id"],
-                "result": json.dumps(tool["result"]),  # JSON string
-            }))
-        pending_tools.clear()
+        await flush_if_idle()
 ```
+
+### Execution Modes
+
+`execution_mode` on each tool definition controls how the agent waits:
+
+| `"interactive"` (default) | `"hold"` |
+|--------------------------|----------|
+| Agent speaks a short transition phrase ("let me check that") while the tool runs, then delivers the result conversationally | Agent stays silent while the tool runs; user-triggered replies are suppressed |
+| DB lookups, REST calls, short calculations | Phone transfers, escalations, payment auth, long async jobs |
+| Returns under ~5 seconds | Returns >10 seconds |
+
+**Hold-mode rules:**
+- The agent emits NO `reply.started` while held — sending audio looks like dead air to the user.
+- `tool.result` **auto-fires** the next reply. **Do NOT also send `reply.create` after** — that produces a duplicate reply.
+- Send `reply.create` (with optional `instructions`) DURING the hold to deliver status updates.
+- `transcript.user.delta` / `transcript.user` are NOT emitted in real time during a hold — they flush when the hold ends.
+
+```json
+{
+  "type": "function",
+  "name": "transfer_call",
+  "description": "Transfer the call to a human agent. Takes 15-30 seconds.",
+  "parameters": {"type": "object", "properties": {"department": {"type": "string"}}, "required": ["department"]},
+  "execution_mode": "hold",
+  "timeout_seconds": 60
+}
+```
+
+### Output Volume
+
+`session.output.volume` accepts `0` (silent) to `100` (loudest). Unlike `voice` and `format`, **`volume` can be updated mid-session**. Send another `session.update` with a new value at any time; the change applies to subsequent `reply.audio` chunks.
 
 ### Handling Interruptions (Barge-In)
 
@@ -156,7 +226,7 @@ For browser apps, enable echo cancellation via `getUserMedia({ audio: { echoCanc
 
 ### Available Voices
 
-Set a voice via `session.output.voice` in `session.update` **before `session.ready`**. `session.output` is immutable once the session is established — the voice **cannot be changed mid-conversation**. Default is `ivy`.
+Set a voice via `session.output.voice` in `session.update` **before `session.ready`**. `output.voice` and `output.format` are immutable once the session is established — the voice **cannot be changed mid-conversation**. (`output.volume` is the exception — it remains mutable.) Default is `ivy`.
 
 **English voices** (US unless noted):
 `ivy`, `james`, `tyler`, `autumn`, `sam`, `mia`, `bella`, `david`, `jack`, `kyle`, `helen`, `martha`, `river`, `emma`, `victor`, `eleanor`; `sophie`, `oliver` (UK)

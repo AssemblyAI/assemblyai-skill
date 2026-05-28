@@ -53,7 +53,9 @@ Model IDs have NO provider prefix (e.g., use `claude-sonnet-4-5-20250929`, not `
 
 | Model | ID |
 |-------|----|
+| Gemini 3.5 Flash | `gemini-3.5-flash` |
 | Gemini 3 Flash Preview | `gemini-3-flash-preview` |
+| Gemini 3.1 Flash Lite Preview ⚠️ US-only | `gemini-3.1-flash-lite-preview` |
 | Gemini 2.5 Pro | `gemini-2.5-pro` |
 | Gemini 2.5 Flash | `gemini-2.5-flash` |
 | Gemini 2.5 Flash-Lite | `gemini-2.5-flash-lite` |
@@ -87,6 +89,7 @@ Supports:
 - `stream: true` — stream responses as server-sent events (SSE). **OpenAI models only.**
 - `transcript_id` — top-level field that injects a transcript's text into the prompt (see [Inject a Transcript by ID](#inject-a-transcript-by-id) below)
 - `post_processing_steps` — ordered server-side fixes applied after generation. Currently supports `{"type": "json-repair"}` to automatically fix malformed JSON in content and tool call arguments
+- `reasoning` — control reasoning behavior for supported models (see [Reasoning](#reasoning) below)
 
 ### Inject a Transcript by ID
 
@@ -198,9 +201,37 @@ console.log(result.choices[0].message.content);
     }
   ],
   "usage": {
-    "prompt_tokens": 150,
-    "completion_tokens": 200,
+    "input_tokens": 150,
+    "output_tokens": 200,
     "total_tokens": 350
+  }
+}
+```
+
+**Note:** Usage field names are `input_tokens` / `output_tokens` / `total_tokens` (matching the canonical AssemblyAI response shape), not `prompt_tokens` / `completion_tokens`.
+
+---
+
+## Reasoning
+
+Control the reasoning behavior of supported models by including a top-level `reasoning` object in your request. Supported on **OpenAI-compatible models, Gemini 3+ models, and Anthropic models**.
+
+Use `effort` to set the reasoning effort level, or `max_tokens` to cap the number of tokens the model can use for internal reasoning. Most models use `effort`.
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `effort` | string | `"low"`, `"medium"`, or `"high"`. Supported by most reasoning models. |
+| `max_tokens` | integer | Maximum tokens the model can use for internal reasoning. |
+
+```json
+{
+  "model": "claude-sonnet-4-6",
+  "messages": [
+    {"role": "user", "content": "Explain quantum entanglement step by step."}
+  ],
+  "max_tokens": 1000,
+  "reasoning": {
+    "effort": "medium"
   }
 }
 ```

@@ -23,7 +23,9 @@ Authorization: YOUR_API_KEY
 | LLM Gateway | `https://llm-gateway.assemblyai.com/v1` | `https://llm-gateway.eu.assemblyai.com/v1` |
 | Streaming v3 | `wss://streaming.assemblyai.com/v3/ws` | `wss://streaming.eu.assemblyai.com/v3/ws` |
 | Streaming v2 (legacy) | `wss://api.assemblyai.com/v2/realtime/ws` | — |
-| Voice Agent API | `wss://agents.assemblyai.com/v1/ws` | — |
+| Voice Agent API | `wss://agents.assemblyai.com/v1/ws` | `wss://agents.eu.assemblyai.com/v1/ws` |
+
+**Streaming EU region**: As of March 2026, the EU region moved from AWS eu-west-1 (Ireland) to AWS eu-north-1 (Stockholm). The customer-facing endpoint host (`streaming.eu.assemblyai.com`) is unchanged.
 
 ## SDKs
 
@@ -102,8 +104,15 @@ See `references/llm-gateway.md` for models, tool calling, structured outputs, an
 | Medical Mode unsupported language | API silently skips Medical Mode and does not charge for it — check for warning in response |
 | Voice Agent API URL | The Voice Agent endpoint is `wss://agents.assemblyai.com/v1/ws` — NOT `/v1/voice` (renamed April 2026), `/v1/realtime` (older), or `speech-to-speech.us.assemblyai.com` (very old) |
 | Voice Agent `tool.call` field | The argument dict is named `arguments`, not `args` (renamed April 2026) |
-| Voice Agent turn detection fields | Use `min_silence` (default 1000ms) and `max_silence` (default 3000ms) under `session.input.turn_detection` — `min_turn_silence`/`max_turn_silence` are the streaming/LiveKit/Pipecat field names, not Voice Agent API |
-| Voice Agent voice change | `session.output` (including `voice`) is **immutable** after the first `session.update` is applied — pick the voice before `session.ready`, you cannot change it mid-conversation |
+| Voice Agent turn detection fields | Use `min_silence` (default 1000ms) and `max_silence` (default 3000ms) under `session.input.turn_detection` — `min_turn_silence`/`max_turn_silence` are the streaming/LiveKit/Pipecat field names, not Voice Agent API. Both must be in `[50, 10000]` ms with `min_silence < max_silence`. Setting either explicitly disables adaptive endpointing for the rest of the session |
+| Voice Agent immutable fields | After `session.ready`, **immutable**: `greeting`, `output.voice`, `output.format` — changing them returns `immutable_field`. **Mutable**: `system_prompt`, `input.turn_detection`, `input.keyterms` (up to 100 strings), `output.volume` (0–100), `tools`, `input.format` |
+| Voice Agent greeting | The `greeting` is sent **straight to the TTS engine** — it is NOT passed through the LLM. Whatever string you set is exactly what the user hears, word for word. Don't write meta-greetings like "Greet the user warmly" — TTS will literally speak that |
+| Voice Agent hold-mode transcripts | While an `execution_mode: "hold"` tool is in flight, `transcript.user.delta` / `transcript.user` are NOT emitted in real time — they flush when the hold ends (on `tool.result` or `reply.create`) |
+| Voice Agent audio pacing | Don't stream audio faster than realtime — excess frames are dropped server-side |
+| Streaming `format_turns` digit rendering | `format_turns=true` enables punctuation, casing, and inverse text normalization (dates, times, phone numbers) — it does **NOT** control digit rendering. Numerals like "22" are a model behavior, and lexical number output ("twenty-two") is not supported in streaming |
+| Streaming EU region | Moved from Ireland (eu-west-1) to Stockholm (eu-north-1) in March 2026. Endpoint host (`streaming.eu.assemblyai.com`) is unchanged |
+| LLM Gateway `tool_calls` location | `tool_calls` lives at `choices[i].message.tool_calls` (under `message`), NOT at `choices[i].tool_calls` (under `choice`). `content` is `null` when only tool_calls are present |
+| Transcript `metadata.warnings` | The `Transcript` response now includes an optional `metadata` object. When present, `metadata.warnings` is an array of `{message}` objects describing issues processed during transcription (e.g. Medical Mode skipped due to unsupported language). `metadata` is omitted entirely when there is nothing to report |
 
 ## Common Mistakes
 
@@ -125,6 +134,8 @@ See `references/llm-gateway.md` for models, tool calling, structured outputs, an
 | Voice Agent `tool.call` `args` field | Renamed to `arguments` — `event["arguments"]` is the parameter dict |
 | Medical Mode `domain: "medical"` | Correct value is `domain: "medical-v1"` |
 | LLM Gateway tool result `role: "function_call_output"` | Correct role is `"tool"` — use `{"role": "tool", "tool_call_id": "...", "content": "..."}` |
+| LLM Gateway response `choices[i].tool_calls` | Tool calls live under `message`: `choices[i].message.tool_calls`, not at the choice level |
+| Sending `tool.result` immediately on `tool.call` | Wait until `reply.done` is the latest event received — sending earlier (mid transition phrase) or later (after a new turn started) breaks turn-taking |
 
 ## Reference Files
 
