@@ -31,7 +31,7 @@ Submit an audio file for transcription. Send a JSON body with the parameters bel
 | Parameter | Type | Description |
 |---|---|---|
 | `audio_url` | string | **Required.** URL of the audio file to transcribe. Can be a public URL or an `upload_url` from the upload endpoint. |
-| `speech_models` | array | Priority-ordered list of speech models to use (e.g., `["universal-3-pro", "universal-2"]`). First model is used if supported; falls back to next. |
+| `speech_models` | array | **Optional** (as of June 2026). Priority-ordered list of speech models to use (e.g., `["universal-3-pro", "universal-2"]`). First model is used if supported; falls back to next. If omitted, defaults to `["universal-3-pro", "universal-2"]`. (Streaming's `speech_model` connection parameter is still required.) |
 | `prompt` | string | Provide context or instructions to the model (e.g., spelling guidance, topic context). Mutually exclusive with `keyterms_prompt`. |
 | `keyterms_prompt` | string | A list of key terms/phrases to boost recognition accuracy. Mutually exclusive with `prompt`. |
 | `language_code` | string | Language code (e.g., `"en"`, `"es"`, `"fr"`). Defaults to `"en"`. |
@@ -362,3 +362,100 @@ curl -s -X POST "https://api.assemblyai.com/v2/transcript" \
     "redact_pii_sub": "entity_name"
   }'
 ```
+
+---
+
+## 16. Sync STT API (Short-Form Audio)
+
+A separate **synchronous** endpoint for clips between **80ms and 120s** — submit audio and receive the transcript in a single request/response, with no polling, no transcript ID, and no upload step. Distinct service from the async REST API above.
+
+### Endpoint
+
+```
+POST https://sync.assemblyai.com/transcribe
+```
+
+- `sync.assemblyai.com` — global default (routes to nearest region)
+- `sync.us.assemblyai.com` — US residency (us-west-2, us-east-1)
+- `sync.eu.assemblyai.com` — EU residency (eu-north-1)
+
+### Headers
+
+| Header | Required | Notes |
+|--------|----------|-------|
+| `Authorization` | Yes | `YOUR_API_KEY` — `Bearer ` prefix is *optionally* accepted here. Alternatively pass `?token=YOUR_API_KEY`. |
+| `X-AAI-Model` | Yes | Must be `u3-sync-pro` (the only model; uses Universal-3 Pro). |
+
+### Request Body (`multipart/form-data`)
+
+| Part | Content-Type | Notes |
+|------|-------------|-------|
+| `audio` | `audio/wav` or `audio/pcm` | **Required.** Raw audio bytes. For raw PCM use S16LE little-endian. |
+| `config` | `application/json` | Optional config object (below). |
+
+`config` fields:
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `prompt` | string | Custom instruction prepended to the model's system prompt. Max **4096** chars. Default applied when omitted. |
+| `word_boost` | string[] | Keyterms that bias the decoder. Max **2048** chars total across all terms. (This is the documented keyterms param for Sync — *not* `keyterms_prompt`.) |
+| `sample_rate` | integer | Required for `audio/pcm`. One of 8000, 16000, 22050, 24000, 32000, 44100, 48000. WAV reads it from the header. |
+| `channels` | integer | Required for `audio/pcm`. `1` or `2` (stereo down-mixed to mono internally). |
+
+`prompt` and `word_boost` can be combined in the same `config` part (unlike the async API where `prompt` and `keyterms_prompt` are mutually exclusive).
+
+### Response
+
+```json
+{
+  "text": "Hi, I'm calling about my Best Buy order...",
+  "words": [
+    { "text": "Hi",  "start_ms": 0,   "end_ms": 200, "confidence": 0.91 }
+  ],
+  "confidence": 0.87,
+  "audio_duration_ms": 101567,
+  "session_id": "eb92c4ff-4bbb-429f-9b99-7279d7fe738f"
+}
+```
+
+Word timestamps are in **milliseconds** (`start_ms` / `end_ms`), unlike the async API's `start` / `end`. Include `session_id` in support requests.
+
+### Audio Requirements
+
+| Constraint | Value |
+|------------|-------|
+| Duration | 80ms – 120s |
+| Max file size | 40 MB |
+| Sample width | 16-bit only |
+| Channels | Mono or stereo (stereo down-mixed) |
+| Sample rates | 8000, 16000, 22050, 24000, 32000, 44100, 48000 Hz |
+| Formats | WAV (`audio/wav`) or raw PCM S16LE (`audio/pcm`) |
+
+### Error Codes
+
+Errors return JSON with either `error_code` + `message` (audio/capacity/inference) or `detail` (auth/rate-limit).
+
+| HTTP | `error_code` | Cause |
+|------|-------------|-------|
+| 400 | `bad_audio` | Malformed WAV, misaligned PCM, or missing `sample_rate`/`channels` for PCM |
+| 400 | `audio_too_short` | Audio below 80ms |
+| 400 | `bad_request` | Missing `audio` part, invalid config JSON, or field limits exceeded |
+| 401 | — | Missing or invalid API key |
+| 413 | `audio_too_large` | Duration > 120s or file > 40 MB |
+| 415 | `unsupported_media_type` | Unsupported format, non-16-bit audio, or unsupported sample rate |
+| 429 | — | Rate limit exceeded — retry after `Retry-After` header |
+| 503 | `capacity_exceeded` / `service_unavailable` | At concurrency cap, or model cold-starting — retry after `Retry-After` |
+| 504 | `inference_timeout` | Exceeded the **30s** per-request deadline |
+| 500 | `inference_error` | Internal model error |
+
+### Example
+
+```bash
+curl -X POST https://sync.assemblyai.com/transcribe \
+  -H 'Authorization: YOUR_API_KEY' \
+  -H 'X-AAI-Model: u3-sync-pro' \
+  -F 'audio=@sample.wav;type=audio/wav' \
+  -F 'config={"prompt":"Transcribe verbatim.","word_boost":["AssemblyAI"]};type=application/json'
+```
+
+When to use: short pre-recorded clips needing an immediate response (voice messages, short call recordings, externally-segmented voice-agent utterances). For audio > 120s use the async REST API; for live mic audio use Streaming.

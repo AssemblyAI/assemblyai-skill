@@ -12,6 +12,10 @@ The LLM Gateway is an OpenAI-compatible API provided by AssemblyAI for applying 
 
 **EU Region Limitation:** Only Anthropic Claude and Google Gemini models are available in the EU region. OpenAI (GPT) models are **not** supported in EU.
 
+**Global routing (lower cost):** Add the optional request field `"model_region": "global"` to route a request to the provider's global, non-region endpoints for lower-cost processing. The only accepted value is `"global"`; omit the field for default in-region processing. Currently live for Anthropic Claude models, with Google Gemini 3 series coming soon. Use it when you have **no** data residency, compliance, or latency requirements and want cheaper calls. It layers on top of the default (US) endpoint.
+
+> **Price change:** Effective **July 1, 2026**, in-region LLM Gateway requests cost **10% more** — a direct pass-through of provider price increases, with no AssemblyAI upcharge. Opting into global routing keeps current pricing.
+
 **Authentication:**
 - Header: `Authorization: API_KEY`
 - Note: Do NOT use a `Bearer` prefix. Pass the API key directly.
@@ -40,6 +44,7 @@ Model IDs have NO provider prefix (e.g., use `claude-sonnet-4-5-20250929`, not `
 
 | Model | ID |
 |-------|----|
+| GPT-5.5 | `gpt-5.5` |
 | GPT-5.2 | `gpt-5.2` |
 | GPT-5.1 | `gpt-5.1` |
 | GPT-5 | `gpt-5` |
@@ -90,6 +95,7 @@ Supports:
 - `transcript_id` — top-level field that injects a transcript's text into the prompt (see [Inject a Transcript by ID](#inject-a-transcript-by-id) below)
 - `post_processing_steps` — ordered server-side fixes applied after generation. Currently supports `{"type": "json-repair"}` to automatically fix malformed JSON in content and tool call arguments
 - `reasoning` — control reasoning behavior for supported models (see [Reasoning](#reasoning) below)
+- `model_region` — set to `"global"` to opt into global routing for lower-cost processing (Claude now, Gemini 3 coming soon). Omit for default in-region processing. See [Global routing](#overview) above.
 
 ### Inject a Transcript by ID
 

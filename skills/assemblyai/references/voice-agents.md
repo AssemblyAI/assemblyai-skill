@@ -341,6 +341,9 @@ async def entrypoint(ctx: agents.JobContext):
             min_turn_silence=100,
             max_turn_silence=1000,
             vad_threshold=0.3,
+            # continuous_partials defaults to True in the LiveKit plugin (False via the API directly)
+            #   — steady ~3s partials during long turns. Set False to disable.
+            # interruption_delay=0,  # Optional: faster first partial (~300ms effective). Default 500 (~800ms effective).
         ),
         vad=silero.VAD.load(activation_threshold=0.3),
     )
@@ -380,6 +383,10 @@ Other modes: **VAD-only** (purely silence-based) and **Manual** (explicit `sessi
 | Silero VAD default threshold is 0.5, AssemblyAI default is 0.3 | Set both to 0.3 — mismatch creates a dead zone delaying interruption |
 | u3-rt-pro requires livekit-agents >= 1.4.4 | Check version before debugging |
 | Old API: `turn_detection="stt"` directly on `AgentSession` | Use `turn_handling=TurnHandlingOptions(turn_detection="stt", ...)` (livekit-agents v1.5+) |
+| `continuous_partials` defaults to **`true`** in the LiveKit plugin (API default is `false`) | Steady ~3s partials during long turns. Set `continuous_partials=False` if you only want silence-based partials |
+| Want faster barge-in / TTFT | Lower `interruption_delay` (default `500`); `interruption_delay=0` → ~300ms effective first partial |
+
+You can update `prompt`, `keyterms_prompt`, `min_turn_silence`, `max_turn_silence`, `continuous_partials`, and `interruption_delay` mid-session via `stt.update_options(...)` — e.g. raise `max_turn_silence` during entity dictation, or lower `interruption_delay` when the agent is speaking for faster barge-in.
 
 ---
 
