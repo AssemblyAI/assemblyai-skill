@@ -548,6 +548,38 @@ Override any field per fallback (messages, temperature, max_tokens). Fields not 
 
 ---
 
+## Error Responses
+
+Most errors return a **flattened** JSON body (changed June 2026 — fields were previously nested under an `error` object):
+
+```json
+{
+  "code": 400,
+  "message": "invalid request body",
+  "request_id": "2a9adf03-c73e-4333-a42d-54b515e6afbd",
+  "metadata": {
+    "errors": ["one of messages or prompt required"]
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `code` | number | HTTP status code. |
+| `message` | string | Human-readable description. |
+| `request_id` | string | Unique request ID — include it when contacting support. |
+| `metadata.errors` | string[] | Present on 400 responses: lists every field that failed validation. |
+
+| Status | Meaning / common cause |
+|--------|------------------------|
+| `400` | Bad request — missing `model` or `messages`/`prompt`, unrecognized model ID, `max_tokens` out of range, or wrong field type. Inspect `metadata.errors`. Common strings: `"model {x} is not supported"`, `"model context limit exceeded"`, `"model_region can only be set to global"`, `"fallback_config depth cannot be greater than 2"`, `"response_format is invalid: ..."`. |
+| `401` / `403` | Auth error — missing/invalid/expired key, wrong account or region, or a `Bearer` prefix was used. **Note:** auth errors still use the older shape `{"error": "...", "status": "error", "request_id": "..."}`. |
+| `404` | `transcript_id` not found (wrong account/region) or deleted (message `"transcript deleted"`). |
+| `429` | Per-model rate limit exceeded within a 60-second window (each model has its own limit). Read the `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` response headers and back off with jitter, or set `fallbacks` so traffic spills over to another model. |
+| `5xx` | Transient AssemblyAI or upstream-provider issue — retry with exponential backoff and jitter. |
+
+---
+
 ## Data Retention by Provider
 
 Data retention policies vary by the underlying provider used by AssemblyAI:

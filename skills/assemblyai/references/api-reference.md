@@ -87,6 +87,10 @@ Poll this endpoint until the response `status` field is `completed` or `error`.
 - `status: "completed"` — transcription finished; full result available
 - `status: "error"` — transcription failed; check `error` field for details
 
+### HTTP Rate Limit
+
+The async REST API allows **20,000 HTTP requests per 5-minute window**, counted across submissions (`POST /v2/transcript`) **and** polling (`GET /v2/transcript/{id}`) combined. Exceeding it returns **403**. Tight polling loops over many concurrent jobs are the usual cause — prefer webhooks (`webhook_url`) over polling, or widen and jitter your polling interval. (Separately, parallel in-flight transcriptions are capped at 200+ for paid accounts; jobs beyond that queue rather than erroring.)
+
 ### Response `metadata`
 
 The transcript response may include an optional `metadata` object with additional information about how the request was processed. The field is **omitted entirely** when there is nothing to report.
@@ -399,6 +403,8 @@ POST https://sync.assemblyai.com/transcribe
 |-------|------|-------|
 | `prompt` | string | Custom instruction prepended to the model's system prompt. Max **4096** chars. Default applied when omitted. |
 | `word_boost` | string[] | Keyterms that bias the decoder. Max **2048** chars total across all terms. (This is the documented keyterms param for Sync — *not* `keyterms_prompt`.) |
+| `conversation_context` | string \| string[] | Prior turns from the same conversation in chronological order (oldest first, most recent last). Supplies the preceding dialogue as context for greater continuity across a multi-turn conversation (e.g. a user talking with a voice agent). A single string is treated as one turn. Oldest turns dropped first when over the context-window limit. |
+| `language_code` | string \| string[] | Language of the audio as an ISO 639-1 code, or a list for multilingual audio. Steers the default transcription prompt toward the named language(s). **Ignored when a custom `prompt` is set.** Default `en`. One of: en, es, de, fr, it, pt, tr, nl, sv, no, da, fi, hi, vi, ar, he, ja, ur, zh. |
 | `sample_rate` | integer | Required for `audio/pcm`. One of 8000, 16000, 22050, 24000, 32000, 44100, 48000. WAV reads it from the header. |
 | `channels` | integer | Required for `audio/pcm`. `1` or `2` (stereo down-mixed to mono internally). |
 
