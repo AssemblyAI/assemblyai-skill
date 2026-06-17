@@ -287,7 +287,7 @@ The LLM Gateway supports tool (function) calling. Define tools in the `tools` ar
 
 ### Tool Call Response
 
-When the model decides to call a tool, the response includes `finish_reason: "tool_calls"`:
+When the model calls a tool, the tool calls appear under `choices[i].message.tool_calls`:
 
 ```json
 {
@@ -308,11 +308,13 @@ When the model decides to call a tool, the response includes `finish_reason: "to
           }
         ]
       },
-      "finish_reason": "tool_calls"
+      "finish_reason": "tool_use"
     }
   ]
 }
 ```
+
+> **`finish_reason` is provider-native — do NOT branch on `"tool_calls"` alone.** The Gateway passes the provider's value through unchanged: OpenAI returns `"tool_calls"` / `"stop"`, while **Claude returns `"tool_use"` / `"end_turn"`** and Gemini has its own values. Detect a tool call by the **presence of `message.tool_calls`**, not by `finish_reason`. The model may also split its response across multiple `choices` (e.g. one with text content, another carrying the `tool_calls` array, each with its own `index`), so iterate all choices when collecting tool calls.
 
 ### Returning Tool Results
 
@@ -354,7 +356,7 @@ Message roles used in tool calling:
 
 ## Agentic Workflows
 
-For multi-step agentic workflows, use a loop pattern where the model autonomously chains tool calls until it reaches a final answer (`finish_reason: "stop"`).
+For multi-step agentic workflows, use a loop pattern where the model autonomously chains tool calls until it produces a final answer (no `tool_calls` in the response). Branch on the **presence of `message.tool_calls`**, not on `finish_reason` — the latter is provider-specific (`"tool_calls"` for OpenAI, `"tool_use"` for Claude).
 
 ### Loop Pattern with `max_iterations`
 
@@ -402,20 +404,20 @@ for i in range(max_iterations):
     assistant_message = choice["message"]
     messages.append(assistant_message)
 
-    if choice["finish_reason"] == "stop":
-        # Model has finished — print final answer
+    tool_calls = assistant_message.get("tool_calls")
+    if not tool_calls:
+        # No tool calls — model has finished; print final answer
         print(assistant_message["content"])
         break
 
-    if choice["finish_reason"] == "tool_calls":
-        for tool_call in assistant_message["tool_calls"]:
-            # Execute the tool (your implementation)
-            tool_result = execute_tool(tool_call["function"]["name"], tool_call["function"]["arguments"])
-            messages.append({
-                "role": "tool",
-                "tool_call_id": tool_call["id"],
-                "content": tool_result,
-            })
+    for tool_call in tool_calls:
+        # Execute the tool (your implementation)
+        tool_result = execute_tool(tool_call["function"]["name"], tool_call["function"]["arguments"])
+        messages.append({
+            "role": "tool",
+            "tool_call_id": tool_call["id"],
+            "content": tool_result,
+        })
 ```
 
 The model will call `get_weather` for each city in separate iterations, then produce a final comparison once it has all the data.
@@ -427,6 +429,8 @@ The model will call `get_weather` for each city in separate iterations, then pro
 Use the `response_format` parameter with `type: "json_schema"` to get structured JSON responses that conform to a specific schema.
 
 **Supported models:** OpenAI (GPT-4.1, GPT-5.x), Gemini, Claude (4.5+), Alibaba Cloud Qwen, Moonshot AI Kimi. **NOT supported:** `gpt-oss` models, Claude 3.x models. For unsupported models, instruct via system prompt instead.
+
+The `json_schema.strict` field **defaults to `false`** — set it to `true` (as in the examples below) to enforce strict schema adherence.
 
 ### Example
 
@@ -545,6 +549,45 @@ Use `fallbacks` to specify backup models that the LLM Gateway automatically trie
 Override any field per fallback (messages, temperature, max_tokens). Fields not specified inherit from the original request.
 
 **Retry behavior:** By default, `fallback_config.retry` is `true`, which automatically retries the request once after 500ms on failure — even if no `fallbacks` are set. To disable: `{"fallback_config": {"retry": false}}`.
+
+---
+
+## Prompt Caching (Public Beta)
+
+Cache large, reusable prompt prefixes (system prompts, long transcripts, tool definitions) to cut cost and latency on repeated calls.
+
+| Provider | Caching | Configuration |
+|----------|---------|---------------|
+| Claude (Anthropic) | Explicit opt-in | Add `cache_control` to the message(s) you want cached |
+| OpenAI, Gemini, Kimi | **Automatic** | None — caching happens implicitly, no config needed |
+
+**Claude — explicit `cache_control`:** mark a content block (a message, or a tool-result message) with `cache_control` set to `{"type": "ephemeral"}`:
+
+```json
+{
+  "role": "system",
+  "content": "<long reusable context...>",
+  "cache_control": {"type": "ephemeral"}
+}
+```
+
+- **TTL is a Gateway extension:** `"cache_control": {"type": "ephemeral", "ttl": "5m"}`. The `ttl` field is NOT part of Anthropic's native API — if omitted, Anthropic's default cache duration applies.
+- A top-level `cache_control` acts as a request-level default for Claude. `prompt_cache_retention` and `prompt_cache_key` are passed through to OpenAI/Kimi.
+- **Minimum cacheable prompt length (Claude varies by model):** Opus 4.5/4.6/4.7 and Haiku 4.5 = **4,096** tokens; Sonnet 4.6 = **2,048**; Sonnet 4.5, Sonnet 4, Opus 4 = **1,024**. OpenAI = **1,024**. Below the threshold the request runs uncached with no error.
+
+**Cache metrics** are returned under `usage.prompt_tokens_details`: `cached_tokens` (cache reads) and `cache_creation.ephemeral_5m_input_tokens` / `ephemeral_1h_input_tokens` (cache writes).
+
+---
+
+## Speech Understanding Endpoint
+
+Besides `/v1/chat/completions`, the LLM Gateway exposes **`POST /v1/understanding`** (`https://llm-gateway.assemblyai.com/v1/understanding`) for Translation, Speaker Identification, and Custom Formatting on an existing transcript. Pass `transcript_id` plus a `speech_understanding.request.<feature>` body. See `speech-understanding.md` for the full request/response shapes.
+
+---
+
+## Rate Limits
+
+Paid accounts: **30 requests/minute per model** (each model has its own 60-second window). The LLM Gateway is **not available on free accounts**. A `429` means you've hit a model's limit — back off with jitter (read `X-RateLimit-*` headers) or set `fallbacks` so traffic spills to another model.
 
 ---
 
