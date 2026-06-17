@@ -2,188 +2,186 @@
 
 ## Overview
 
-Speech Understanding provides post-transcription intelligence features including translation, speaker identification, and custom formatting.
+Speech Understanding provides post-transcription intelligence: **Translation, Speaker Identification, and Custom Formatting**. (Entity Detection, Sentiment Analysis, Key Phrases, and Topic Detection are *not* part of this object — they remain classic boolean transcript params; see `audio-intelligence.md`.)
 
-- Available via the `speech_understanding` object in a transcript request (inline) OR via a separate endpoint (post-hoc on existing transcripts).
-- Endpoint: `POST https://llm-gateway.assemblyai.com/v1/understanding`
-  - EU: `https://llm-gateway.eu.assemblyai.com/v1/understanding`
-- Auth header: `Authorization: API_KEY` (no `Bearer` prefix)
-- Can be used inline during transcription or post-hoc on existing transcripts.
+Two ways to run it:
 
-## Translation
+1. **Inline during transcription** — include the `speech_understanding` object in the `POST /v2/transcript` body. Results come back when the transcript completes.
+2. **Post-hoc on an existing transcript** — `POST https://llm-gateway.assemblyai.com/v1/understanding` (EU: `https://llm-gateway.eu.assemblyai.com/v1/understanding`) with a `transcript_id`.
 
-Translates transcript text into one or more target languages. Supports 100+ languages.
+Auth header: `Authorization: API_KEY` (no `Bearer` prefix).
 
-### Parameters
-
-- `target_languages` (array of strings): Language codes to translate into (e.g., `["es", "fr", "de"]`).
-- `formal` (boolean): When `true`, uses formal tone in translation.
-- `match_original_utterance` (boolean): When `true`, maintains speaker mapping so each translated utterance corresponds to the original speaker's utterance.
-
-### Example Request
+> **CRITICAL structure:** every feature nests under `speech_understanding.request.<feature>` — there is a `request` wrapper. Writing `speech_understanding.translation` directly (without `.request`) is invalid. Results come back under `speech_understanding.response.<feature>`.
 
 ```json
 {
-  "transcript_id": "abc123",
+  "audio_url": "https://example.com/audio.mp3",
+  "speaker_labels": true,
   "speech_understanding": {
-    "translation": {
-      "target_languages": ["es", "fr"],
-      "formal": true,
-      "match_original_utterance": true
+    "request": {
+      "translation": { "target_languages": ["es"] }
     }
   }
 }
 ```
 
-### Example Response
+## Translation
+
+Translates the transcript into one or more target languages.
+
+- **Models:** Universal-3 Pro and Universal-2 only. **Regions:** US & EU. Supports 100+ language codes.
+
+### Parameters (`speech_understanding.request.translation`)
+
+- `target_languages` (array, **required**): language codes to translate into (e.g., `["es", "de"]`).
+- `formal` (boolean, default `false`): when `true`, uses formal pronouns/grammatical forms.
+- `match_original_utterance` (boolean, default `false`): when `true`, adds a `translated_texts` key to each utterance. **Requires `speaker_labels: true`.**
+
+### Example Request
 
 ```json
 {
-  "translation": {
-    "es": [
-      {
-        "speaker": "A",
-        "original": "Hello, how are you?",
-        "translation": "Hola, ¿cómo está usted?"
+  "audio_url": "https://example.com/audio.mp3",
+  "speaker_labels": true,
+  "speech_understanding": {
+    "request": {
+      "translation": {
+        "target_languages": ["es", "de"],
+        "formal": true,
+        "match_original_utterance": true
       }
-    ],
-    "fr": [
-      {
-        "speaker": "A",
-        "original": "Hello, how are you?",
-        "translation": "Bonjour, comment allez-vous ?"
-      }
-    ]
+    }
+  }
+}
+```
+
+### Response
+
+The original transcript response gains a top-level `translated_texts` object (language code → full translated text). When `match_original_utterance` is enabled, each entry in `utterances` also gets its own `translated_texts`. Status lives at `speech_understanding.response.translation.status`.
+
+```json
+{
+  "id": "735d90b6-...",
+  "status": "completed",
+  "text": "Smoke from hundreds of wildfires...",
+  "translated_texts": {
+    "es": "El humo de cientos de incendios forestales...",
+    "de": "Rauch von Hunderten von Waldbränden..."
+  },
+  "speech_understanding": {
+    "request": { "translation": { "formal": true, "target_languages": ["es", "de"] } },
+    "response": { "translation": { "status": "success" } }
   }
 }
 ```
 
 ## Speaker Identification
 
-Distinct from diarization. Maps generic speaker labels (Speaker A, Speaker B) to actual names or roles. Requires diarization (`speaker_labels: true`) to be enabled first.
+Distinct from diarization. Maps generic diarization labels (Speaker A, B, …) to actual names or roles. **Requires `speaker_labels: true`.**
 
-### Parameters
+### Parameters (`speech_understanding.request.speaker_identification`)
 
-- `speaker_type` (string): `"role"` or `"name"`.
-- `known_values` (array of strings): Simple list of known speaker names or roles. Max 35 characters each.
-- `speakers` (array of objects): More detailed speaker descriptions. Each object can include:
-  - `name` (string)
-  - `description` (string)
-  - `company` (string)
-  - `title` (string)
-
-Use either `known_values` or `speakers`, not both.
+- `speaker_type` (string): `"name"` or `"role"`.
+- `known_values` (array of strings): list of known names or roles, max 35 chars each. Required when `speaker_type` is `"role"` (and `speakers` is absent); optional when `"name"`.
+- `speakers` (array of objects): richer metadata for better accuracy. Each object **must include `name` (for `speaker_type: "name"`) or `role` (for `speaker_type: "role"`)** plus an optional `description`. Any additional custom properties (`company`, `title`, `department`, …) are allowed. Use `known_values` **or** `speakers`, not both.
 
 ### Example with known_values
 
 ```json
 {
-  "transcript_id": "abc123",
+  "audio_url": "https://example.com/audio.mp3",
+  "speaker_labels": true,
   "speech_understanding": {
-    "speaker_identification": {
-      "speaker_type": "name",
-      "known_values": ["Alice", "Bob", "Charlie"]
+    "request": {
+      "speaker_identification": {
+        "speaker_type": "name",
+        "known_values": ["Michel Martin", "Peter DeCarlo"]
+      }
     }
   }
 }
 ```
 
-### Example with speakers
+### Example with speakers (role-based)
 
 ```json
 {
-  "transcript_id": "abc123",
+  "audio_url": "https://example.com/audio.mp3",
+  "speaker_labels": true,
   "speech_understanding": {
-    "speaker_identification": {
-      "speaker_type": "role",
-      "speakers": [
-        {
-          "name": "Dr. Smith",
-          "description": "The interviewer asking questions",
-          "company": "Acme Corp",
-          "title": "Head of Recruiting"
-        },
-        {
-          "name": "Jane Doe",
-          "description": "The candidate being interviewed",
-          "company": "Previous Inc",
-          "title": "Software Engineer"
-        }
-      ]
+    "request": {
+      "speaker_identification": {
+        "speaker_type": "role",
+        "speakers": [
+          { "role": "interviewer", "description": "Hosts the program and interviews the guests" },
+          { "role": "guest", "description": "Answers questions from the interview" }
+        ]
+      }
     }
   }
+}
+```
+
+For name-based identification, replace `role` with `name` in each object (and optionally add custom fields like `company`/`title`).
+
+### Response
+
+`speech_understanding.response.speaker_identification.mapping` maps each diarization label to the identified value, and the rewritten `utterances`/`words` carry the identified label in their `speaker` field.
+
+```json
+{
+  "speech_understanding": {
+    "response": {
+      "speaker_identification": {
+        "mapping": { "A": "Michel Martin", "B": "Peter DeCarlo" },
+        "status": "success"
+      }
+    }
+  },
+  "utterances": [
+    { "speaker": "Michel Martin", "text": "Smoke from hundreds of wildfires...", "start": 240, "end": 26560 }
+  ]
 }
 ```
 
 ## Custom Formatting
 
-Automatically formats dates, phone numbers, and emails in the transcript text.
+Reformats dates, phone numbers, emails (and more) in the transcript according to format patterns you specify.
 
-### Parameters
+### Parameters (`speech_understanding.request.custom_formatting`)
 
-All booleans:
+The format params are **strings (format patterns), not booleans**:
 
-- `date`: Format dates in transcript text.
-- `phone_number`: Format phone numbers in transcript text.
-- `email`: Format email addresses in transcript text.
-- `format_utterances`: Apply formatting to utterance-level text as well.
-
-### Example
-
-```json
-{
-  "transcript_id": "abc123",
-  "speech_understanding": {
-    "custom_formatting": {
-      "date": true,
-      "phone_number": true,
-      "email": true,
-      "format_utterances": true
-    }
-  }
-}
-```
-
-## Using via Transcript Request
-
-Include the `speech_understanding` object directly in the `POST /v2/transcript` body to run Speech Understanding features inline during transcription.
+- `date` (string): pattern for dates, e.g. `"mm/dd/yyyy"`, `"dd/mm/yyyy"`, `"yyyy-mm-dd"`.
+- `phone_number` (string): pattern, e.g. `"(xxx)xxx-xxxx"`, `"xxx-xxx-xxxx"`.
+- `email` (string): pattern, e.g. `"username@domain.com"`.
+- `format_utterances` (boolean, default `false`): also format utterance-level text (preserves word timestamps).
 
 ### Example
 
 ```json
-POST https://api.assemblyai.com/v2/transcript
-Authorization: API_KEY
-
 {
   "audio_url": "https://example.com/audio.mp3",
-  "speaker_labels": true,
   "speech_understanding": {
-    "translation": {
-      "target_languages": ["es"],
-      "formal": false,
-      "match_original_utterance": true
-    },
-    "speaker_identification": {
-      "speaker_type": "name",
-      "known_values": ["Alice", "Bob"]
-    },
-    "custom_formatting": {
-      "date": true,
-      "phone_number": true,
-      "email": true,
-      "format_utterances": true
+    "request": {
+      "custom_formatting": {
+        "date": "mm/dd/yyyy",
+        "phone_number": "(xxx)xxx-xxxx",
+        "email": "username@domain.com",
+        "format_utterances": true
+      }
     }
   }
 }
 ```
 
-The Speech Understanding results will be included in the transcript response once it completes.
+### Response
 
-## Using via Understanding Endpoint
+`speech_understanding.response.custom_formatting` contains `formatted_text`, `formatted_utterances` (only when `format_utterances: true`), and a `mapping` object (original → formatted).
 
-Send a `POST` request with a `transcript_id` and `speech_understanding` object to run Speech Understanding features post-hoc on an existing transcript.
+## Post-hoc via the Understanding Endpoint
 
-### Example
+To run Speech Understanding on an **existing** transcript, POST to `/v1/understanding` with a `transcript_id` (same `speech_understanding.request.<feature>` structure):
 
 ```bash
 curl -X POST "https://llm-gateway.assemblyai.com/v1/understanding" \
@@ -192,17 +190,13 @@ curl -X POST "https://llm-gateway.assemblyai.com/v1/understanding" \
   -d '{
     "transcript_id": "abc123",
     "speech_understanding": {
-      "translation": {
-        "target_languages": ["de"],
-        "formal": true,
-        "match_original_utterance": false
-      },
-      "speaker_identification": {
-        "speaker_type": "role",
-        "known_values": ["Doctor", "Patient"]
+      "request": {
+        "translation": { "target_languages": ["de"], "formal": true }
       }
     }
   }'
 ```
 
-The response will contain the results of the requested Speech Understanding features.
+## Rate Limits (`/understanding` endpoint)
+
+Per-account, 60-second window: **Free = 2 req/min, Paid = 30 req/min**. A single multi-feature request counts once.

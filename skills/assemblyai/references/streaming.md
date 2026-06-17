@@ -14,16 +14,17 @@ Connect via query parameter: `?token=API_KEY` or use a temporary token (see Temp
 
 ### Connection Query Parameters
 
-**`speech_model` is required** — there is no default model. Omitting it will cause the request to fail.
+**`speech_model` is optional — defaults to `u3-rt-pro`** when omitted (changed; previously documented as required). It's still good practice to set it explicitly.
 
 | Parameter | Description |
 |-----------|-------------|
-| `speech_model` | **Required.** Model to use: `u3-rt-pro`, `universal-streaming-english`, `universal-streaming-multilingual`, `whisper-rt` |
+| `speech_model` | **Optional** (default `u3-rt-pro`). Model to use: `u3-rt-pro`, `universal-3-5-pro` (Preview), `universal-streaming-english`, `universal-streaming-multilingual`. `whisper-rt` (99+ languages) is **legacy** — removed from the public model picker and the streaming spec enums (June 2026) but still functional via `speech_model=whisper-rt` |
+| `mode` | **u3-rt-pro / universal-3-5-pro only.** Accuracy/latency tradeoff: `min_latency` (fastest time-to-text), `balanced` (**default** — best for voice agents), or `max_accuracy` (highest accuracy, for scribes/post-call). Sets the per-mode defaults for `min_turn_silence`, `max_turn_silence`, `interruption_delay`, `continuous_partials`, and `vad_threshold`. Set at connection time and updatable mid-stream via `UpdateConfiguration`. |
 | `sample_rate` | Audio sample rate in Hz (e.g., 16000) |
 | `encoding` | Audio encoding: `pcm_s16le` or `pcm_mulaw` |
-| `end_of_turn_confidence_threshold` | Confidence threshold for turn detection (only affects Universal Streaming, not U3 Pro) |
+| `end_of_turn_confidence_threshold` | Confidence threshold for turn detection. Only affects Universal Streaming, not U3 Pro. **Officially deprecated** — tune `min_turn_silence`/`max_turn_silence` instead. |
 | `format_turns` | Set to `true` to enable formatted final transcripts with punctuation, casing, and inverse text normalization (dates, times, phone numbers). Also activates turn-level keyterm boosting for Universal Streaming models. **Does NOT control digit rendering** — numerals (e.g. "22") are a model behavior, and lexical number output (e.g. "twenty-two") is not supported in streaming. |
-| `prompt` | Natural language transcription instructions (u3-rt-pro only). Mutually exclusive with `keyterms_prompt`. If omitted, a built-in default prompt optimized for turn detection is used automatically. |
+| `prompt` | **u3-rt-pro only.** Natural-language *context about the audio* (domain, topic, scenario, conversation details) — **NOT** behavioral/formatting instructions. The transcription instruction (verbatim behavior, punctuation, formatting) is built in and managed by AssemblyAI; formatting or behavioral commands placed in `prompt` are not supported. Mutually exclusive with `keyterms_prompt`. If omitted, a built-in default prompt optimized for turn detection is used automatically. Recommended: test with no prompt first, then add context only for domain vocabulary the model gets wrong. |
 | `keyterms_prompt` | JSON-encoded array of strings (up to 100 terms, max 50 chars each) to bias transcription (u3-rt-pro and Universal Streaming). Mutually exclusive with `prompt`. When passing via URL query param, must be JSON.stringify'd: `keyterms_prompt=["term1","term2"]`. Costs additional $0.04/hr. |
 | `inactivity_timeout` | Seconds of silence before session auto-closes |
 | `speaker_labels` | Enable diarization (`true`/`false`) |
@@ -34,8 +35,15 @@ Connect via query parameter: `?token=API_KEY` or use a temporary token (see Temp
 | `redact_pii_sub` | Replacement scheme: `hash` (default — replaces with `#` chars) or `entity_name` (replaces with `[ENTITY_TYPE]`). |
 | `include_partial_turns` | Whether to include partial (non-final) turns. Defaults to `true` normally, but **`false` automatically** when `redact_pii` is `true` so unredacted text never reaches the client. |
 | `filter_profanity` | Filter profanity from transcripts (replaces with `***`). Default `false`. |
-| `interruption_delay` | **u3-rt-pro only.** Integer milliseconds (0–1000, default `500`). How soon the first partial is emitted — lower = faster TTFT and earlier barge-in but more false interruptions; higher = more confident interruptions but slower partials. Minimum effective turn duration is `300ms`. |
+| `interruption_delay` | **u3-rt-pro only.** Integer milliseconds (0–1000, default `500`). How soon the first partial is emitted — lower = faster TTFT and earlier barge-in but more false interruptions; higher = more confident interruptions but slower partials. The server adds a minimum of 300ms on top (`interruption_delay: 0` → ~300ms effective, `500` → ~800ms effective). The LiveKit plugin keeps the API default of `500`. |
+| `continuous_partials` | **u3-rt-pro only.** Boolean — **default `true`** (changed June 2026; previously `false`). Now defaults to `true` on both the API directly and the LiveKit plugin. When `true`, emits additional partial transcripts approximately every ~3 seconds during long turns, each covering the full turn transcript so far. The first early partial (at 750ms / your `interruption_delay`) is unaffected. Set `false` if you only want silence-based partials. |
+| `agent_context` | **u3-rt-pro only.** String (≤~1500 chars). Your voice agent's most recent spoken reply (TTS text), used as context for the next user turn — see Context Carryover below. Set at connection time to seed an opening greeting, and/or update mid-stream via `UpdateConfiguration`. Set on another model at connect → session rejected; mid-stream → stripped with a warning. |
+| `previous_context_n_turns` | **u3-rt-pro only.** Integer (default `3`). Max number of prior conversation entries (finalized user transcripts plus any `agent_context` values) carried forward as context for each transcription. Set to `0` to disable automatic context carryover entirely. Most integrations leave this at the default — see Context Carryover below. |
 | `vad_threshold` | **u3-rt-pro only.** Float 0.0–1.0 (default `0.3`). Confidence threshold for classifying audio frames as silence. Increase in noisy environments to reduce false speech detection. |
+| `voice_focus` | **u3-rt-pro only.** Noise suppression that isolates the primary voice and suppresses background chatter, keyboard clicks, fan hum, and room echo before audio reaches the model. Set to `near-field` (headsets, handsets, close-talking mics) or `far-field` (conference rooms, laptop/drive-thru mics, distant capture). Omit to disable. Set as a connection parameter. |
+| `voice_focus_threshold` | **u3-rt-pro only.** Optional float `0.0`–`1.0` controlling how aggressively background audio is suppressed when `voice_focus` is set — higher = more aggressive. |
+| `language_code` | **u3-rt-pro only.** Optional ISO 639-1 code that biases the model toward a single language when you know the session is monolingual (improves language accuracy). Omit to keep default multilingual code-switching. Currently available: `en`, `es`, `fr`, `de`, `it`, `pt`. |
+| `language_detection` | **u3-rt-pro only.** Boolean (default `false`). When `true`, each `Turn` message includes the detected `language_code` and `language_confidence`. U3 Pro natively code-switches across en/es/de/fr/pt/it without this — use it only when you need the per-turn language reported. |
 | `llm_gateway` | JSON-stringified LLM Gateway config — triggers LLM analysis on each completed turn, results delivered as `LLMGatewayResponse` messages |
 
 ### Messages Sent (Client to Server)
@@ -43,6 +51,7 @@ Connect via query parameter: `?token=API_KEY` or use a temporary token (see Temp
 - **Audio:** Binary WebSocket frames containing raw audio data
 - **UpdateConfiguration:** JSON message to change settings mid-stream (see Dynamic Configuration)
 - **ForceEndpoint:** JSON message to force-end the current turn immediately
+- **KeepAlive:** `{"type": "KeepAlive"}` — resets the `inactivity_timeout` timer. **Not required** unless you set `inactivity_timeout` and want to keep the session open during periods with no audio.
 - **Terminate:** JSON message to gracefully close the session
 
 ### Messages Received (Server to Client)
@@ -50,6 +59,7 @@ Connect via query parameter: `?token=API_KEY` or use a temporary token (see Temp
 - **Begin:** Session start confirmation, includes session `id`
 - **Turn:** Transcript data with `transcript` text, `end_of_turn` boolean flag, and `words` array
 - **SpeechStarted:** Voice Activity Detection (VAD) event indicating speech has begun (U3 Pro only — use for barge-in detection)
+- **SpeakerRevision:** Revised speaker labels at session close (only when `speaker_labels` is enabled). See Streaming Diarization below.
 - **LLMGatewayResponse:** LLM analysis result for the completed turn (only present when `llm_gateway` connection parameter is set)
 - **Termination:** Session end confirmation
 
@@ -71,6 +81,18 @@ Wait for the `Termination` message from the server before closing the WebSocket 
 
 ## Streaming Models
 
+### u3-rt-pro (recommended)
+
+- Universal-3 Pro Streaming — most accurate, fastest word emissions for voice agents
+- 6 languages (EN, ES, DE, FR, PT, IT) with native code-switching
+- Punctuation-based turn detection, promptable, supports the `mode` accuracy/latency tradeoff
+
+### universal-3-5-pro (Preview)
+
+- Next-generation flagship streaming model, currently in **preview**
+- More languages than u3-rt-pro: EN, ES, DE, FR, PT, IT, TR, NL, SV, NO, DA, FI, HI, VI, AR, HE, JA, UR, ZH
+- Improved prompting and enhanced conversational-context features; supports `mode`, `prompt`, `agent_context`, and language detection like u3-rt-pro
+
 ### universal-streaming-english
 
 - English only (1 language)
@@ -81,11 +103,12 @@ Wait for the `Termination` message from the server before closing the WebSocket 
 - Supports 6 languages
 - Per-utterance language detection
 
-### whisper-rt
+### whisper-rt (legacy)
 
 - Supports 99+ languages
 - Auto-detect language only (no manual language selection)
 - Includes non-speech tags: `[Silence]`, `[Music]`
+- **Legacy** as of June 2026: removed from the public model picker, model-selection table, and the streaming spec `speech_model` enums. The dedicated docs page still exists and the model still works via `speech_model=whisper-rt`, but new integrations should prefer `universal-streaming-multilingual` or `u3-rt-pro` unless you need 99+ language coverage.
 
 ---
 
@@ -110,7 +133,7 @@ A low `min_turn_silence` value can split entities like phone numbers across turn
 Change settings mid-stream without reconnecting. Fields are model-dependent:
 
 - **Universal Streaming:** `keyterms_prompt`, `min_turn_silence`, `max_turn_silence`
-- **u3-rt-pro:** `prompt`, `keyterms_prompt`, `min_turn_silence`, `max_turn_silence`, `continuous_partials`, `vad_threshold`, `interruption_delay`
+- **u3-rt-pro / universal-3-5-pro:** `mode`, `prompt`, `keyterms_prompt`, `min_turn_silence`, `max_turn_silence`, `continuous_partials`, `vad_threshold`, `interruption_delay`, `agent_context`
 
 Send a JSON message:
 
@@ -203,6 +226,76 @@ Enable speaker diarization by setting query parameters on the WebSocket URL:
 - Speaker labels are assigned as `"A"`, `"B"`, `"C"`, etc.
 - Turns under approximately **1 second** in duration receive the label `"UNKNOWN"`.
 - Accuracy improves over time within a session as the model accumulates more speaker data.
+- Real-time labels can shift as more audio arrives — early turns in particular may be reassigned.
+
+### Revised speaker labels (SpeakerRevision)
+
+When the session ends, the server runs a final refinement pass over the whole conversation and emits a **single `SpeakerRevision` message** (when `speaker_labels` is enabled). It arrives **right before `Termination`**, after the client sends `Terminate`. (Streaming diarization itself is supported on all three streaming models; the `SpeakerRevision` message is defined in the Universal-3 Pro streaming message set.)
+
+- A session emits **zero or one** `SpeakerRevision` message.
+- It contains a `revisions` array with **only the turns whose speaker labels changed** — unchanged turns are omitted.
+- Each item: `turn_order` (matches the original `Turn`'s `turn_order`), `speaker_label` (corrected, string or null), and `words` (with corrected per-word `speaker`).
+- **Text content and word timestamps are never changed** — only speaker assignments.
+- Adds approximately **400ms** of latency at session close; does not affect the real-time labels already delivered.
+- To apply: match each `turn_order` against the turn you already received and replace its `speaker_label` and per-word `speaker` values. Use the revised labels for the final, highest-quality transcript (persisting, post-call summaries, downstream LLMs).
+
+```json
+{
+  "type": "SpeakerRevision",
+  "revisions": [
+    {
+      "turn_order": 3,
+      "speaker_label": "B",
+      "words": [
+        { "text": "Hello",  "start": 1200, "end": 1450, "speaker": "B" },
+        { "text": "there.", "start": 1450, "end": 1780, "speaker": "B" }
+      ]
+    }
+  ]
+}
+```
+
+---
+
+## Context Carryover (u3-rt-pro)
+
+Universal-3 Pro Streaming automatically carries prior **finalized** turns (`end_of_turn: true`) forward as context to improve accuracy on the next turn. This is **on by default** — no configuration required — and is per-session (closing the WebSocket clears it).
+
+**Defaults:** context carryover enabled, ~3 prior entries carried (controlled by `previous_context_n_turns`, default `3`), ~1500-character max context. Older entries drop first. Set `previous_context_n_turns: 0` at connection time to disable automatic context carryover entirely.
+
+You can additionally pass your voice agent's spoken reply (TTS text) via **`agent_context`** so the model knows the question the user is about to answer — especially valuable for short replies (`"yes"`, `"7pm"`, a single name) and spelled-out entities (emails, account IDs). For example, after the agent asks `"What's your email address?"`, `agent_context` helps the model produce `"user@assemblyai.com"` instead of `"user at assemblyai dot com"`.
+
+Two ways to set it:
+
+- **At connection time** — pass `agent_context` as a query parameter to seed the opening greeting before the user speaks.
+- **Mid-stream** — send `UpdateConfiguration` with `agent_context` after each agent reply.
+
+```json
+{ "type": "UpdateConfiguration", "agent_context": "Sure — what date would you like to book?" }
+```
+
+**Limits:** u3-rt-pro only (set at connect on another model → session rejected; mid-stream → stripped with a warning). Per-value cap ~1500 chars. Not billed separately (streaming is billed on session duration).
+
+---
+
+## Voice Focus (Noise Suppression, u3-rt-pro)
+
+Voice Focus isolates the primary voice and suppresses background chatter, keyboard clicks, fan hum, and room echo **before** the audio reaches the transcription model. Set the `voice_focus` connection parameter when you open the WebSocket. Pick the variant by how close the speaker is to the mic:
+
+| Variant | Value | When to use |
+|---------|-------|-------------|
+| Near field | `near-field` | Headsets, handsets, and other close-talking microphones |
+| Far field | `far-field` | Conference rooms, drive-thru speakers, laptop mics, other distant capture |
+
+Optionally tune `voice_focus_threshold` (float `0.0`–`1.0`) to control how aggressively background audio is suppressed — higher = more aggressive. Omit `voice_focus` to disable. u3-rt-pro only.
+
+```python
+CONNECTION_PARAMS = {
+    "sample_rate": 16000,
+    "speech_model": "u3-rt-pro",
+    "voice_focus": "near-field",
+}
+```
 
 ---
 
