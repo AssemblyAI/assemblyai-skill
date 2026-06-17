@@ -22,6 +22,10 @@ Authorization: Bearer YOUR_API_KEY
 
 For browser-based clients, generate a [temporary token](https://www.assemblyai.com/docs/voice-agents/voice-agent-api/browser-integration) and pass it as a query parameter instead: `wss://agents.assemblyai.com/v1/ws?token=YOUR_TEMP_TOKEN`.
 
+**Token endpoint:** `GET https://agents.assemblyai.com/v1/token` (server-side, with your API key in `Authorization`). Two query params:
+- `expires_in_seconds` — token *redemption window* (how long the client has to open the WebSocket before the token is rejected with `unauthorized`). Range **1–600**; 60–300 recommended. Stops applying once `session.ready` is received.
+- `max_session_duration_seconds` — *session duration cap* once connected. Range **60–10800**, **defaults to 10800** (the 3-hour max). When the session hits this cap the server emits `session.ended` and closes — there is **no "closing soon" warning event**, so run your own client-side timer if you need to wrap up gracefully.
+
 ### Audio Format
 
 All audio exchanged is **base64-encoded, mono**. The encoding determines the sample rate. Input and output encodings are configured independently under `session.input.format` and `session.output.format`.
@@ -43,6 +47,7 @@ Defaults to `audio/pcm` (24 kHz) on both input and output if omitted. ~50ms chun
 | `session.resume` | Reconnect to an existing session: `{"type": "session.resume", "session_id": "..."}` |
 | `tool.result` | Return tool call result back to the agent: `{"type": "tool.result", "call_id": "...", "result": "<JSON string>"}` |
 | `reply.create` | Ask the agent to generate a reply right now, optionally with one-shot `instructions`: `{"type": "reply.create", "instructions": "Tell the user we're still processing."}`. Primarily used to deliver status updates during a `hold`-mode tool call |
+| `session.end` | End the session cleanly: `{"type": "session.end"}` (no other fields). Server emits a final `session.ended` and closes the WebSocket; the `session_id` dies immediately and cannot be resumed. Short-circuits the 30s resume grace window and **stops billing immediately** |
 
 ### Server Events
 
@@ -60,10 +65,11 @@ Defaults to `audio/pcm` (24 kHz) on both input and output if omitted. ~50ms chun
 | `reply.done` | Agent reply complete; optional `status: "interrupted"` if user barged in |
 | `tool.call` | Agent wants to call a tool — payload includes `call_id`, `name`, `arguments` (dict, **not** `args`) |
 | `session.error` | Connection / handshake / message validation error — see error code table below |
+| `session.ended` | Final event on every clean teardown, emitted right before the server closes the WebSocket. Payload: `session_duration_seconds`, `audio_duration_seconds` (`null` if no audio was streamed), `timestamp`. Fires when you send `session.end`, on `max_session_duration_seconds`, on an unrecoverable error, or when the 30s grace window expires. Always handle it — if the socket closes *without* a preceding `session.ended`, treat it as a network drop and `session.resume` within 30s |
 
 ### Session Resume
 
-Sessions are preserved for **30 seconds** after disconnection. Reconnect using `session.resume` with the session ID to continue without losing context.
+Sessions are preserved for **30 seconds** after disconnection. Reconnect using `session.resume` with the session ID to continue without losing context. **This 30-second grace window is billable.** When the call is truly over and you won't reconnect, send `session.end` (not just a socket close) — it closes immediately, emits `session.ended`, and stops billing right away.
 
 ### Example session.update
 
@@ -222,17 +228,21 @@ On user barge-in, the server emits `reply.done` with `status: "interrupted"` and
 | **iOS** (AVAudioEngine)  | `playerNode.stop()` then `playerNode.play()`                                              |
 | **Android** (AudioTrack) | `audioTrack.pause()`, `audioTrack.flush()`, then `audioTrack.play()`                      |
 
-For browser apps, enable echo cancellation via `getUserMedia({ audio: { echoCancellation: true, noiseSuppression: false } })`. **Disable** browser-level `noiseSuppression` and skip Krisp/RNNoise/BVC — the Voice Agent API runs server-side voice focus (noise cancellation) by default; stacking client-side denoising on top adds artifacts that hurt accuracy more than the original noise. For terminal/desktop apps, use headphones — native audio APIs (PortAudio, sounddevice) don't include AEC.
+For browser apps, enable echo cancellation via `getUserMedia({ audio: { echoCancellation: true, noiseSuppression: false, autoGainControl: true } })`. **Disable** browser-level `noiseSuppression` and skip Krisp/RNNoise/BVC — the Voice Agent API runs server-side voice focus (noise cancellation) by default; stacking client-side denoising on top adds artifacts that hurt accuracy more than the original noise. For terminal/desktop apps, use headphones — native audio APIs (PortAudio, sounddevice) don't include AEC.
 
 ### Available Voices
 
 Set a voice via `session.output.voice` in `session.update` **before `session.ready`**. `output.voice` and `output.format` are immutable once the session is established — the voice **cannot be changed mid-conversation**. (`output.volume` is the exception — it remains mutable.) Default is `ivy`.
 
-**English voices** (US unless noted):
-`ivy`, `james`, `tyler`, `autumn`, `sam`, `mia`, `bella`, `david`, `jack`, `kyle`, `helen`, `martha`, `river`, `emma`, `victor`, `eleanor`; `sophie`, `oliver` (UK)
+**Every voice speaks all output languages** — 🇺🇸 English, French, German, Italian, Portuguese, Spanish, Hindi, Mandarin, Russian, Korean, and Japanese. The two groups below differ only by the voice's *primary accent*, not which languages it can speak. (Input recognition covers en/fr/de/it/pt/es only, so an agent can speak an output language it can't transcribe — useful for translation-style flows.)
 
-**Multilingual voices** (also speak English with code-switching):
-`arjun` (Hindi/Hinglish), `ethan`/`mei` (Mandarin), `dmitri` (Russian), `lukas`/`lena` (German), `pierre` (French), `mina`/`joon` (Korean), `ren`/`hana` (Japanese), `giulia`/`luca` (Italian), `lucia`/`mateo` (Spanish), `diego` (Colombian Spanish)
+**American-English accent** (carried into other languages):
+`ivy`, `james`, `tyler`, `winter`, `bella`, `david`, `kyle`, `helen`, `martha`, `river`, `emma`, `victor`, `eleanor`
+
+**Native non-English accent** (code-switches with English):
+`arjun` (Hindi/Hinglish), `dmitri` (Russian), `pierre` (French), `giulia`/`luca` (Italian), `lucia`/`mateo` (Spanish), `diego` (Latin American / Colombian Spanish)
+
+**Removed June 2026** (now rejected at `session.update`): `sam`, `mia`, `jack` (US); `sophie`, `oliver` (UK — no UK voices remain); `ethan`, `mei` (Mandarin); `lukas`, `lena` (German); `mina`, `joon` (Korean); `ren`, `hana` (Japanese). Any name not in the lists above (including older names like `autumn`, `claire`, `dawn`, `josh`, `grace`, `pete`) silently fails — call `GET https://agents.assemblyai.com/v1/voices` for the authoritative live list.
 
 ```json
 {"type": "session.update", "session": {"output": {"voice": "ivy"}}}
@@ -247,9 +257,10 @@ Set a voice via `session.output.voice` in `session.update` **before `session.rea
 | `UNAUTHORIZED`      | Connection (closes 1008)        | Missing or invalid `Authorization` token                         |
 | `FORBIDDEN`         | Connection (closes 1008)        | Valid token, insufficient permissions                            |
 | `INTERNAL_ERROR`    | Connection (closes 1011)        | Unexpected exception during connection setup                     |
+| `server_error`      | Connection (closes 1008) / Live | Service at capacity at handshake (try again later); also raised live on an unexpected exception while applying `session.update` |
 | `session_not_found` | `session.resume` (closes 1008)  | Unknown `session_id` or 30-second grace window expired           |
 | `session_forbidden` | `session.resume` (closes 1008)  | `session_id` belongs to a different account                      |
-| `session_expired`   | Live (closes 1008)              | Session TTL elapsed                                              |
+| `session_expired`   | Live (closes 1008)              | Session duration TTL (`max_session_duration_seconds`) reached. **No "closing soon" warning** precedes it — run a client-side timer if you need to wrap up |
 | `agent_init_failed` | After upgrade, before ready     | Agent worker reported initialization failure                     |
 | `agent_timeout`     | After upgrade, before ready     | Agent did not signal ready within 10 seconds                     |
 | `invalid_format`    | Live (session stays open)       | Bad JSON, missing/unknown `type`, validation failure             |
@@ -341,7 +352,7 @@ async def entrypoint(ctx: agents.JobContext):
             min_turn_silence=100,
             max_turn_silence=1000,
             vad_threshold=0.3,
-            # continuous_partials defaults to True in the LiveKit plugin (False via the API directly)
+            # continuous_partials defaults to True (both the API and the LiveKit plugin, as of June 2026)
             #   — steady ~3s partials during long turns. Set False to disable.
             # interruption_delay=0,  # Optional: faster first partial (~300ms effective). Default 500 (~800ms effective).
         ),
@@ -383,7 +394,7 @@ Other modes: **VAD-only** (purely silence-based) and **Manual** (explicit `sessi
 | Silero VAD default threshold is 0.5, AssemblyAI default is 0.3 | Set both to 0.3 — mismatch creates a dead zone delaying interruption |
 | u3-rt-pro requires livekit-agents >= 1.4.4 | Check version before debugging |
 | Old API: `turn_detection="stt"` directly on `AgentSession` | Use `turn_handling=TurnHandlingOptions(turn_detection="stt", ...)` (livekit-agents v1.5+) |
-| `continuous_partials` defaults to **`true`** in the LiveKit plugin (API default is `false`) | Steady ~3s partials during long turns. Set `continuous_partials=False` if you only want silence-based partials |
+| `continuous_partials` defaults to **`true`** (both the API and the LiveKit plugin, as of June 2026) | Steady ~3s partials during long turns. Set `continuous_partials=False` if you only want silence-based partials |
 | Want faster barge-in / TTFT | Lower `interruption_delay` (default `500`); `interruption_delay=0` → ~300ms effective first partial |
 
 You can update `prompt`, `keyterms_prompt`, `min_turn_silence`, `max_turn_silence`, `continuous_partials`, and `interruption_delay` mid-session via `stt.update_options(...)` — e.g. raise `max_turn_silence` during entity dictation, or lower `interruption_delay` when the agent is speaking for faster barge-in.
@@ -529,12 +540,21 @@ Both frameworks support updating parameters mid-session without reconnecting:
 
 ---
 
-## Telnyx Telephony Integration
+## Telephony Integration
 
-### Via LiveKit
+### Twilio (first-party, via the Voice Agent API)
+
+Twilio connects directly to the Voice Agent API — no LiveKit/Pipecat needed. Your server bridges Twilio Media Streams ↔ the Voice Agent WebSocket. Because Twilio's native G.711 μ-law is byte-compatible with the `audio/pcmu` encoding, audio is forwarded **with zero transcoding**.
+
+- Set **both** `session.input.format` and `session.output.format` to `audio/pcmu` (G.711 μ-law, 8 kHz) to match Twilio's codec.
+- On an incoming call, Twilio hits your webhook; return TwiML with `<Connect><Stream>` pointed at your WebSocket endpoint.
+- Map each Twilio `media` event → `input.audio`; map each `reply.audio` event → a Twilio `media` action.
+- On barge-in (`input.speech.started`), send Twilio a `clear` action so the agent stops talking immediately.
+
+### Telnyx — Via LiveKit
 SIP trunking routes phone calls into LiveKit rooms. Configure inbound/outbound trunks and dispatch rules.
 
-### Via Pipecat
+### Telnyx — Via Pipecat
 WebSocket media streaming with TeXML. **Critical: Telnyx uses 8kHz audio**, not 16kHz:
 
 ```python
