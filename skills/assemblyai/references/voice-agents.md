@@ -22,6 +22,10 @@ Authorization: Bearer YOUR_API_KEY
 
 For browser-based clients, generate a [temporary token](https://www.assemblyai.com/docs/voice-agents/voice-agent-api/browser-integration) and pass it as a query parameter instead: `wss://agents.assemblyai.com/v1/ws?token=YOUR_TEMP_TOKEN`.
 
+**Token endpoint:** `GET https://agents.assemblyai.com/v1/token` (server-side, with your API key in `Authorization`). Two query params:
+- `expires_in_seconds` — token *redemption window* (how long the client has to open the WebSocket before the token is rejected with `unauthorized`). Range **1–600**; 60–300 recommended. Stops applying once `session.ready` is received.
+- `max_session_duration_seconds` — *session duration cap* once connected. Range **60–10800**, **defaults to 10800** (the 3-hour max). When the session hits this cap the server emits `session.ended` and closes — there is **no "closing soon" warning event**, so run your own client-side timer if you need to wrap up gracefully.
+
 ### Audio Format
 
 All audio exchanged is **base64-encoded, mono**. The encoding determines the sample rate. Input and output encodings are configured independently under `session.input.format` and `session.output.format`.
@@ -224,7 +228,7 @@ On user barge-in, the server emits `reply.done` with `status: "interrupted"` and
 | **iOS** (AVAudioEngine)  | `playerNode.stop()` then `playerNode.play()`                                              |
 | **Android** (AudioTrack) | `audioTrack.pause()`, `audioTrack.flush()`, then `audioTrack.play()`                      |
 
-For browser apps, enable echo cancellation via `getUserMedia({ audio: { echoCancellation: true, noiseSuppression: false } })`. **Disable** browser-level `noiseSuppression` and skip Krisp/RNNoise/BVC — the Voice Agent API runs server-side voice focus (noise cancellation) by default; stacking client-side denoising on top adds artifacts that hurt accuracy more than the original noise. For terminal/desktop apps, use headphones — native audio APIs (PortAudio, sounddevice) don't include AEC.
+For browser apps, enable echo cancellation via `getUserMedia({ audio: { echoCancellation: true, noiseSuppression: false, autoGainControl: true } })`. **Disable** browser-level `noiseSuppression` and skip Krisp/RNNoise/BVC — the Voice Agent API runs server-side voice focus (noise cancellation) by default; stacking client-side denoising on top adds artifacts that hurt accuracy more than the original noise. For terminal/desktop apps, use headphones — native audio APIs (PortAudio, sounddevice) don't include AEC.
 
 ### Available Voices
 
@@ -253,9 +257,10 @@ Set a voice via `session.output.voice` in `session.update` **before `session.rea
 | `UNAUTHORIZED`      | Connection (closes 1008)        | Missing or invalid `Authorization` token                         |
 | `FORBIDDEN`         | Connection (closes 1008)        | Valid token, insufficient permissions                            |
 | `INTERNAL_ERROR`    | Connection (closes 1011)        | Unexpected exception during connection setup                     |
+| `server_error`      | Connection (closes 1008) / Live | Service at capacity at handshake (try again later); also raised live on an unexpected exception while applying `session.update` |
 | `session_not_found` | `session.resume` (closes 1008)  | Unknown `session_id` or 30-second grace window expired           |
 | `session_forbidden` | `session.resume` (closes 1008)  | `session_id` belongs to a different account                      |
-| `session_expired`   | Live (closes 1008)              | Session TTL elapsed                                              |
+| `session_expired`   | Live (closes 1008)              | Session duration TTL (`max_session_duration_seconds`) reached. **No "closing soon" warning** precedes it — run a client-side timer if you need to wrap up |
 | `agent_init_failed` | After upgrade, before ready     | Agent worker reported initialization failure                     |
 | `agent_timeout`     | After upgrade, before ready     | Agent did not signal ready within 10 seconds                     |
 | `invalid_format`    | Live (session stays open)       | Bad JSON, missing/unknown `type`, validation failure             |
@@ -535,12 +540,21 @@ Both frameworks support updating parameters mid-session without reconnecting:
 
 ---
 
-## Telnyx Telephony Integration
+## Telephony Integration
 
-### Via LiveKit
+### Twilio (first-party, via the Voice Agent API)
+
+Twilio connects directly to the Voice Agent API — no LiveKit/Pipecat needed. Your server bridges Twilio Media Streams ↔ the Voice Agent WebSocket. Because Twilio's native G.711 μ-law is byte-compatible with the `audio/pcmu` encoding, audio is forwarded **with zero transcoding**.
+
+- Set **both** `session.input.format` and `session.output.format` to `audio/pcmu` (G.711 μ-law, 8 kHz) to match Twilio's codec.
+- On an incoming call, Twilio hits your webhook; return TwiML with `<Connect><Stream>` pointed at your WebSocket endpoint.
+- Map each Twilio `media` event → `input.audio`; map each `reply.audio` event → a Twilio `media` action.
+- On barge-in (`input.speech.started`), send Twilio a `clear` action so the agent stops talking immediately.
+
+### Telnyx — Via LiveKit
 SIP trunking routes phone calls into LiveKit rooms. Configure inbound/outbound trunks and dispatch rules.
 
-### Via Pipecat
+### Telnyx — Via Pipecat
 WebSocket media streaming with TeXML. **Critical: Telnyx uses 8kHz audio**, not 16kHz:
 
 ```python

@@ -14,14 +14,15 @@ Connect via query parameter: `?token=API_KEY` or use a temporary token (see Temp
 
 ### Connection Query Parameters
 
-**`speech_model` is required** — there is no default model. Omitting it will cause the request to fail.
+**`speech_model` is optional — defaults to `u3-rt-pro`** when omitted (changed; previously documented as required). It's still good practice to set it explicitly.
 
 | Parameter | Description |
 |-----------|-------------|
-| `speech_model` | **Required.** Model to use: `u3-rt-pro`, `universal-streaming-english`, `universal-streaming-multilingual`. `whisper-rt` (99+ languages) is **legacy** — removed from the public model picker and the streaming spec enums (June 2026) but still functional via `speech_model=whisper-rt` |
+| `speech_model` | **Optional** (default `u3-rt-pro`). Model to use: `u3-rt-pro`, `universal-3-5-pro` (Preview), `universal-streaming-english`, `universal-streaming-multilingual`. `whisper-rt` (99+ languages) is **legacy** — removed from the public model picker and the streaming spec enums (June 2026) but still functional via `speech_model=whisper-rt` |
+| `mode` | **u3-rt-pro / universal-3-5-pro only.** Accuracy/latency tradeoff: `min_latency` (fastest time-to-text), `balanced` (**default** — best for voice agents), or `max_accuracy` (highest accuracy, for scribes/post-call). Sets the per-mode defaults for `min_turn_silence`, `max_turn_silence`, `interruption_delay`, `continuous_partials`, and `vad_threshold`. Set at connection time and updatable mid-stream via `UpdateConfiguration`. |
 | `sample_rate` | Audio sample rate in Hz (e.g., 16000) |
 | `encoding` | Audio encoding: `pcm_s16le` or `pcm_mulaw` |
-| `end_of_turn_confidence_threshold` | Confidence threshold for turn detection (only affects Universal Streaming, not U3 Pro) |
+| `end_of_turn_confidence_threshold` | Confidence threshold for turn detection. Only affects Universal Streaming, not U3 Pro. **Officially deprecated** — tune `min_turn_silence`/`max_turn_silence` instead. |
 | `format_turns` | Set to `true` to enable formatted final transcripts with punctuation, casing, and inverse text normalization (dates, times, phone numbers). Also activates turn-level keyterm boosting for Universal Streaming models. **Does NOT control digit rendering** — numerals (e.g. "22") are a model behavior, and lexical number output (e.g. "twenty-two") is not supported in streaming. |
 | `prompt` | **u3-rt-pro only.** Natural-language *context about the audio* (domain, topic, scenario, conversation details) — **NOT** behavioral/formatting instructions. The transcription instruction (verbatim behavior, punctuation, formatting) is built in and managed by AssemblyAI; formatting or behavioral commands placed in `prompt` are not supported. Mutually exclusive with `keyterms_prompt`. If omitted, a built-in default prompt optimized for turn detection is used automatically. Recommended: test with no prompt first, then add context only for domain vocabulary the model gets wrong. |
 | `keyterms_prompt` | JSON-encoded array of strings (up to 100 terms, max 50 chars each) to bias transcription (u3-rt-pro and Universal Streaming). Mutually exclusive with `prompt`. When passing via URL query param, must be JSON.stringify'd: `keyterms_prompt=["term1","term2"]`. Costs additional $0.04/hr. |
@@ -50,6 +51,7 @@ Connect via query parameter: `?token=API_KEY` or use a temporary token (see Temp
 - **Audio:** Binary WebSocket frames containing raw audio data
 - **UpdateConfiguration:** JSON message to change settings mid-stream (see Dynamic Configuration)
 - **ForceEndpoint:** JSON message to force-end the current turn immediately
+- **KeepAlive:** `{"type": "KeepAlive"}` — resets the `inactivity_timeout` timer. **Not required** unless you set `inactivity_timeout` and want to keep the session open during periods with no audio.
 - **Terminate:** JSON message to gracefully close the session
 
 ### Messages Received (Server to Client)
@@ -78,6 +80,18 @@ Wait for the `Termination` message from the server before closing the WebSocket 
 ---
 
 ## Streaming Models
+
+### u3-rt-pro (recommended)
+
+- Universal-3 Pro Streaming — most accurate, fastest word emissions for voice agents
+- 6 languages (EN, ES, DE, FR, PT, IT) with native code-switching
+- Punctuation-based turn detection, promptable, supports the `mode` accuracy/latency tradeoff
+
+### universal-3-5-pro (Preview)
+
+- Next-generation flagship streaming model, currently in **preview**
+- More languages than u3-rt-pro: EN, ES, DE, FR, PT, IT, TR, NL, SV, NO, DA, FI, HI, VI, AR, HE, JA, UR, ZH
+- Improved prompting and enhanced conversational-context features; supports `mode`, `prompt`, `agent_context`, and language detection like u3-rt-pro
 
 ### universal-streaming-english
 
@@ -119,7 +133,7 @@ A low `min_turn_silence` value can split entities like phone numbers across turn
 Change settings mid-stream without reconnecting. Fields are model-dependent:
 
 - **Universal Streaming:** `keyterms_prompt`, `min_turn_silence`, `max_turn_silence`
-- **u3-rt-pro:** `prompt`, `keyterms_prompt`, `min_turn_silence`, `max_turn_silence`, `continuous_partials`, `vad_threshold`, `interruption_delay`, `agent_context`
+- **u3-rt-pro / universal-3-5-pro:** `mode`, `prompt`, `keyterms_prompt`, `min_turn_silence`, `max_turn_silence`, `continuous_partials`, `vad_threshold`, `interruption_delay`, `agent_context`
 
 Send a JSON message:
 

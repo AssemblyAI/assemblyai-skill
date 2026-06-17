@@ -31,10 +31,10 @@ Submit an audio file for transcription. Send a JSON body with the parameters bel
 | Parameter | Type | Description |
 |---|---|---|
 | `audio_url` | string | **Required.** URL of the audio file to transcribe. Can be a public URL or an `upload_url` from the upload endpoint. |
-| `speech_models` | array | **Optional** (as of June 2026). Priority-ordered list of speech models to use (e.g., `["universal-3-pro", "universal-2"]`). First model is used if supported; falls back to next. If omitted, defaults to `["universal-3-pro", "universal-2"]`. (Streaming's `speech_model` connection parameter is still required.) |
+| `speech_models` | array | **Optional** (as of June 2026). Priority-ordered list of speech models to use (e.g., `["universal-3-pro", "universal-2"]`). First model is used if supported; falls back to next. If omitted, defaults to `["universal-3-pro", "universal-2"]`. (Streaming's `speech_model` connection parameter is also optional now — defaults to `u3-rt-pro`.) |
 | `prompt` | string | Provide context or instructions to the model (e.g., spelling guidance, topic context). Mutually exclusive with `keyterms_prompt`. |
-| `keyterms_prompt` | string | A list of key terms/phrases to boost recognition accuracy. Mutually exclusive with `prompt`. |
-| `language_code` | string | Language code (e.g., `"en"`, `"es"`, `"fr"`). Defaults to `"en"`. |
+| `keyterms_prompt` | array | List of key terms/phrases (strings) to boost recognition accuracy — up to **200** terms (Universal-2) or **1000** terms (Universal-3 Pro), max **6 words per phrase**. Mutually exclusive with `prompt`. |
+| `language_code` | string | Language code (e.g., `"en_us"`, `"es"`, `"fr"`). Defaults to `"en_us"`. |
 | `language_detection` | boolean | Enable automatic language detection. Default `false`. |
 | `language_detection_options` | object | Options for language detection: `expected_languages` (array of language codes), `fallback_language` (string), `code_switching` (boolean, Universal-2 only), `code_switching_confidence_threshold` (float, default 0.3). |
 | `language_confidence_threshold` | float | Minimum confidence threshold for language detection (0-1). |
@@ -55,6 +55,7 @@ Submit an audio file for transcription. Send a JSON body with the parameters bel
 | `redact_pii_audio_quality` | string | Quality of redacted audio: `"mp3"` or `"wav"`. |
 | `redact_pii_audio_options` | object | `override_audio_redaction_method: "silence"` replaces PII with silence instead of default beep. `return_redacted_no_speech_audio: true` also redacts non-speech segments. |
 | `redact_pii_return_unredacted` | boolean | When `true`, returns the original unredacted transcript alongside the redacted one in a single request. Response then includes `unredacted_text`, `unredacted_words`, and `unredacted_utterances`. Default `false`. |
+| `redact_static_entities` | object | Literal find-and-replace redaction layered on top of standard PII redaction. Maps a custom label to a list of exact terms, e.g. `{"INTERNAL_TOOL": ["Bearclaw", "Cubclaw"]}`. Requires `redact_pii: true` (else 400); matched terms are also redacted in audio when `redact_pii_audio` is on. |
 | `filter_profanity` | boolean | Filter profanity from transcript text. Default `false`. |
 | `disfluencies` | boolean | Include disfluencies (um, uh, etc.) in transcript. Default `false`. Supported on Universal-3 Pro and Universal-2. U3 Pro can also preserve disfluencies via prompting for finer-grained control. |
 | `multichannel` | boolean | Enable multichannel transcription. Default `false`. |
@@ -63,12 +64,12 @@ Submit an audio file for transcription. Send a JSON body with the parameters bel
 | `webhook_auth_header_name` | string | Custom header name for webhook authentication. |
 | `webhook_auth_header_value` | string | Custom header value for webhook authentication. |
 | `auto_highlights` | boolean | Enable key phrase detection. Default `false`. |
-| `speech_understanding` | object | Enable Speech Understanding features inline. Accepts `translation`, `speaker_identification`, and/or `custom_formatting` sub-objects. See `speech-understanding.md`. |
+| `speech_understanding` | object | Enable Speech Understanding inline. Features nest under `speech_understanding.request` (the `request` wrapper is required): `translation`, `speaker_identification`, and/or `custom_formatting`. See `speech-understanding.md`. |
 | `speakers_expected` | integer | Hint for number of speakers (diarization). Deprecated in favor of `speaker_options`. |
 | `speaker_options` | object | Diarization options: `min_speakers_expected` (int, default 1), `max_speakers_expected` (int). |
 | `temperature` | float | 0–1. Controls randomness. Universal-3 Pro only. |
 | `domain` | string | Domain-specific model variant. `"medical-v1"` enables Medical Mode (EN, ES, DE, FR). Supported on Universal-3 Pro and Universal-2. |
-| `remove_audio_tags` | string | `"all"` removes audio event tags from transcript. Universal-3 Pro only. |
+| `remove_audio_tags` | string | Remove inline annotations from the transcript. `"all"` removes all (audio event markers and speaker cues); `"speaker"` removes only speaker cues while keeping other annotations. Universal-3 Pro only. |
 | `language_codes` | array | List of language codes for code-switching (must include `"en"`). Universal-3 Pro only. |
 | `audio_start_from` | integer | Start transcription from this time offset, in **milliseconds**. |
 | `audio_end_at` | integer | End transcription at this time offset, in **milliseconds**. |
@@ -103,16 +104,16 @@ The transcript response may include an optional `metadata` object with additiona
   "metadata": {
     "domain_used": null,
     "warnings": [
-      { "message": "Medical Mode was requested for language 'ja' but is supported only for en, es, de, fr; skipping (not charged)." }
+      { "message": "'ja' is not supported in universal-3-pro — transcription is handled by universal-2. To silence this warning, set speech_models: [\"universal-3-pro\", \"universal-2\"]." }
     ]
   }
 }
 ```
 
 - `metadata.domain_used` — the domain-specific model that was applied (e.g. `"medical-v1"` for Medical Mode), or `null` if none was used. Always present when `metadata` is present.
-- `metadata.warnings` — array of `{message}` objects describing issues encountered during processing (e.g. Medical Mode skipped for an unsupported language). The field is **omitted** when there are no warnings.
+- `metadata.warnings` — array of `{message}` objects describing issues encountered during processing — e.g. an audio language that the requested model can't handle (and was routed to a fallback model), or Medical Mode skipped for an unsupported language. The field is **omitted** when there are no warnings.
 
-Check `metadata.warnings` after every transcription to catch silent fallbacks (e.g. Medical Mode requested but not applied because the language wasn't supported — the request still completes and is NOT charged for Medical Mode).
+Check `metadata.warnings` after every transcription to catch silent fallbacks (model routing, or Medical Mode requested but not applied because the language wasn't supported — the request still completes and is NOT charged for Medical Mode). Separately, the top-level `speech_model_used` field always reports which model actually ran.
 
 ---
 
@@ -388,7 +389,7 @@ POST https://sync.assemblyai.com/transcribe
 | Header | Required | Notes |
 |--------|----------|-------|
 | `Authorization` | Yes | `YOUR_API_KEY` — `Bearer ` prefix is *optionally* accepted here. Alternatively pass `?token=YOUR_API_KEY`. |
-| `X-AAI-Model` | Yes | Must be `u3-sync-pro` (the only model; uses Universal-3 Pro). |
+| `X-AAI-Model` | Yes | Model to use. The current quickstart uses **`universal-3-5-pro`**; `u3-sync-pro` (Universal-3 Pro) is also accepted (it's the value in the formal `sync-api.yaml` enum). |
 
 ### Request Body (`multipart/form-data`)
 
@@ -416,7 +417,7 @@ POST https://sync.assemblyai.com/transcribe
 {
   "text": "Hi, I'm calling about my Best Buy order...",
   "words": [
-    { "text": "Hi",  "start_ms": 0,   "end_ms": 200, "confidence": 0.91 }
+    { "text": "Hi",  "start": 0,   "end": 200, "confidence": 0.91 }
   ],
   "confidence": 0.87,
   "audio_duration_ms": 101567,
@@ -424,7 +425,7 @@ POST https://sync.assemblyai.com/transcribe
 }
 ```
 
-Word timestamps are in **milliseconds** (`start_ms` / `end_ms`), unlike the async API's `start` / `end`. Include `session_id` in support requests.
+Word timestamps use the fields `start` / `end` (integer **milliseconds**) — same field names as the async API. Note the clip-level `audio_duration_ms` does carry the `_ms` suffix. Include `session_id` in support requests.
 
 ### Audio Requirements
 
@@ -459,7 +460,7 @@ Errors return JSON with either `error_code` + `message` (audio/capacity/inferenc
 ```bash
 curl -X POST https://sync.assemblyai.com/transcribe \
   -H 'Authorization: YOUR_API_KEY' \
-  -H 'X-AAI-Model: u3-sync-pro' \
+  -H 'X-AAI-Model: universal-3-5-pro' \
   -F 'audio=@sample.wav;type=audio/wav' \
   -F 'config={"prompt":"Transcribe verbatim.","word_boost":["AssemblyAI"]};type=application/json'
 ```
