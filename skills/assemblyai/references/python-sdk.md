@@ -290,7 +290,33 @@ print(transcript.text)
 
 ---
 
-## 8. LLM Gateway Usage from Python
+## 8. Streaming v3 (Realtime)
+
+Use the `assemblyai.streaming.v3` client for new realtime STT code. Set `speech_model="universal-3-5-pro"` explicitly; the raw API defaults to it, but the Python SDK parameter is required. Requires `assemblyai>=0.64.21` — older SDKs such as `0.64.4` reject `universal-3-5-pro` during local parameter validation.
+
+```python
+import os
+
+from assemblyai.streaming.v3 import StreamingClient, StreamingClientOptions, StreamingParameters
+
+client = StreamingClient(
+    StreamingClientOptions(api_key=os.environ["ASSEMBLYAI_API_KEY"])
+)
+
+client.connect(
+    StreamingParameters(
+        speech_model="universal-3-5-pro",
+        sample_rate=16_000,
+    )
+)
+
+# Send PCM16 audio chunks with client.stream(audio_generator), then:
+client.disconnect(terminate=True)
+```
+
+---
+
+## 9. LLM Gateway Usage from Python
 
 The LLM Gateway provides access to LLMs via AssemblyAI's infrastructure. Use `requests` to call the gateway endpoint directly. **Do not use LeMUR — it is deprecated.**
 
@@ -325,7 +351,7 @@ The gateway follows the OpenAI-compatible chat completions format. The `Authoriz
 
 ---
 
-## 9. File Upload
+## 10. File Upload
 
 The SDK handles file uploads automatically when you pass a local file path to `transcribe()`:
 

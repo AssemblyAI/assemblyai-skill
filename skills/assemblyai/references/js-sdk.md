@@ -274,6 +274,7 @@ import { AssemblyAI } from "assemblyai";
 const client = new AssemblyAI({ apiKey: process.env.ASSEMBLYAI_API_KEY! });
 
 const transcriber = client.streaming.transcriber({
+  speechModel: "universal-3-5-pro",
   sampleRate: 16_000,
 });
 
