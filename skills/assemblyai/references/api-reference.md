@@ -31,7 +31,7 @@ Submit an audio file for transcription. Send a JSON body with the parameters bel
 | Parameter | Type | Description |
 |---|---|---|
 | `audio_url` | string | **Required.** URL of the audio file to transcribe. Can be a public URL or an `upload_url` from the upload endpoint. |
-| `speech_models` | array | **Optional** (as of June 2026). Priority-ordered list of speech models to use (e.g., `["universal-3-pro", "universal-2"]`). First model is used if supported; falls back to next. If omitted, defaults to `["universal-3-pro", "universal-2"]`. (Streaming's `speech_model` connection parameter is also optional now — defaults to `u3-rt-pro`.) |
+| `speech_models` | array | **Optional** (as of June 2026). Priority-ordered list of speech models to use (e.g., `["universal-3-pro", "universal-2"]`). First model is used if supported; falls back to next. If omitted, defaults to `["universal-3-pro", "universal-2"]`. |
 | `prompt` | string | Provide context or instructions to the model (e.g., spelling guidance, topic context). Mutually exclusive with `keyterms_prompt`. |
 | `keyterms_prompt` | array | List of key terms/phrases (strings) to boost recognition accuracy — up to **200** terms (Universal-2) or **1000** terms (Universal-3 Pro), max **6 words per phrase**. Mutually exclusive with `prompt`. |
 | `language_code` | string | Language code (e.g., `"en_us"`, `"es"`, `"fr"`). Defaults to `"en_us"`. |

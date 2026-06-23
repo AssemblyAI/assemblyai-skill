@@ -20,7 +20,7 @@ LLM training data contains outdated AssemblyAI patterns — deprecated LeMUR API
 |------|---------|
 | **Pre-recorded transcription** | Universal-3 Pro, Universal-2, prompting, speech_models fallback |
 | **Streaming STT** | v3 protocol, v2 legacy, Whisper Streaming, temp tokens, error codes |
-| **Voice agents** | LiveKit and Pipecat integrations, u3-rt-pro, turn detection, silence tuning, latency optimization |
+| **Voice agents** | LiveKit and Pipecat integrations, universal-3-5-pro defaults, turn detection, silence tuning, latency optimization |
 | **LLM Gateway** | Chat completions, tool calling, agentic workflows, structured output caveats, full model list |
 | **Audio intelligence** | PII redaction, diarization, summarization, sentiment, entity detection, content safety, chapters |
 | **Speech understanding** | Translation, speaker identification, custom formatting |

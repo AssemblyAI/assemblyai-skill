@@ -275,21 +275,21 @@ In browsers, pre-handshake failures (like `UNAUTHORIZED`) surface as `close` eve
 
 ## Recommended Model (STT-based paths)
 
-**`u3-rt-pro`** (Universal-3 Pro Streaming) is the recommended model for all new voice agent work.
+**`universal-3-5-pro`** is the recommended default model for new STT-based voice agent work. The raw streaming API also defaults to it when `speech_model` is omitted; set it explicitly when pinning behavior or using an SDK that requires the field.
 
-| Feature | u3-rt-pro | universal-streaming-english | universal-streaming-multilingual |
-|---------|-----------|------------------------------|----------------------------------|
-| Turn detection | Punctuation-based | Confidence-based | Confidence-based |
-| Custom prompting (beta) | Yes | No | No |
-| Keyterms boosting | Yes | Yes | Yes |
-| Speaker diarization | Yes | Yes | Yes |
-| Dynamic mid-session updates | Yes | Yes | Yes |
-| Multilingual code switching | Yes | No | Yes |
-| Languages | 6 (en, es, fr, de, it, pt) | English only | Multiple |
+| Feature | universal-3-5-pro | u3-rt-pro | universal-streaming-english | universal-streaming-multilingual |
+|---------|-------------------|-----------|------------------------------|----------------------------------|
+| Turn detection | Punctuation-based | Punctuation-based | Confidence-based | Confidence-based |
+| Custom prompting | Yes | Yes | No | No |
+| Keyterms boosting | Yes | Yes | Yes | Yes |
+| Speaker diarization | Yes | Yes | Yes | Yes |
+| Dynamic mid-session updates | Yes | Yes | Yes | Yes |
+| Multilingual code switching | Yes | Yes | No | Yes |
+| Languages | 18 (en, es, de, fr, pt, it, tr, nl, sv, no, da, fi, hi, vi, ar, he, ja, zh) | 6 (en, es, fr, de, it, pt) | English only | Multiple |
 
-`end_of_turn_confidence_threshold` does NOT work with u3-rt-pro — it only applies to older universal-streaming models.
+`end_of_turn_confidence_threshold` does NOT work with `universal-3-5-pro` or `u3-rt-pro` — it only applies to older universal-streaming models.
 
-## Turn Detection (u3-rt-pro)
+## Turn Detection (universal-3-5-pro / u3-rt-pro)
 
 1. User pauses for `min_turn_silence` (e.g., 100ms)
 2. Model checks for terminal punctuation (`.` `?` `!`)
@@ -299,7 +299,7 @@ In browsers, pre-handshake failures (like `UNAUTHORIZED`) surface as `close` eve
 
 ## Silence Settings by Use Case
 
-These are for **Universal Streaming** models. U3 Pro defaults differ.
+These are for **Universal Streaming** models. U3 Pro-family defaults differ.
 
 | Profile | min_turn_silence | max_turn_silence | Use Case |
 |---------|-----------------|-----------------|----------|
@@ -316,7 +316,7 @@ Low `min_turn_silence` can split entities (phone numbers, emails) across turns. 
 ### Setup
 
 ```bash
-# For u3-rt-pro (requires livekit-agents >= 1.4.4)
+# Use a recent LiveKit AssemblyAI plugin for Streaming v3 models.
 pip install "livekit-agents[assemblyai,silero,codecs]~=1.5" python-dotenv
 # If using MultilingualModel turn detection, also install:
 pip install "livekit-plugins-turn-detector~=1.0"
@@ -326,7 +326,7 @@ Required env vars: `ASSEMBLYAI_API_KEY`, `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVE
 
 ### Turn Detection Modes
 
-#### STT-based (recommended for u3-rt-pro)
+#### STT-based (recommended for universal-3-5-pro)
 
 ```python
 from dotenv import load_dotenv
@@ -348,7 +348,7 @@ async def entrypoint(ctx: agents.JobContext):
             endpointing={"min_delay": 0},  # CRITICAL: avoid additive 500ms delay
         ),
         stt=assemblyai.STT(
-            model="u3-rt-pro",
+            model="universal-3-5-pro",
             min_turn_silence=100,
             max_turn_silence=1000,
             vad_threshold=0.3,
@@ -378,7 +378,7 @@ session = AgentSession(
         turn_detection=MultilingualModel(),
         endpointing={"min_delay": 0.5, "max_delay": 3.0},
     ),
-    stt=assemblyai.STT(model="u3-rt-pro", vad_threshold=0.3),
+    stt=assemblyai.STT(model="universal-3-5-pro", vad_threshold=0.3),
     vad=silero.VAD.load(activation_threshold=0.3),
 )
 ```
@@ -392,7 +392,7 @@ Other modes: **VAD-only** (purely silence-based) and **Manual** (explicit `sessi
 | `max_turn_silence` defaults to **100ms** in LiveKit plugin (API default is 1000ms) | Always set `max_turn_silence=1000` explicitly in STT mode |
 | `endpointing.min_delay` adds **500ms** on top of AssemblyAI endpointing | Set `endpointing={"min_delay": 0}` inside `TurnHandlingOptions` in STT mode |
 | Silero VAD default threshold is 0.5, AssemblyAI default is 0.3 | Set both to 0.3 — mismatch creates a dead zone delaying interruption |
-| u3-rt-pro requires livekit-agents >= 1.4.4 | Check version before debugging |
+| Streaming v3 model support requires a recent LiveKit AssemblyAI plugin | Use `livekit-agents[assemblyai]~=1.5` in new projects; older versions may reject newer model strings |
 | Old API: `turn_detection="stt"` directly on `AgentSession` | Use `turn_handling=TurnHandlingOptions(turn_detection="stt", ...)` (livekit-agents v1.5+) |
 | `continuous_partials` defaults to **`true`** (both the API and the LiveKit plugin, as of June 2026) | Steady ~3s partials during long turns. Set `continuous_partials=False` if you only want silence-based partials |
 | Want faster barge-in / TTFT | Lower `interruption_delay` (default `500`); `interruption_delay=0` → ~300ms effective first partial |
@@ -422,7 +422,7 @@ from pipecat.services.assemblyai.config import AssemblyAIConnectionParams
 stt = AssemblyAISTTService(
     api_key=os.getenv("ASSEMBLYAI_API_KEY"),
     connection_params=AssemblyAIConnectionParams(
-        speech_model="u3-rt-pro",
+        speech_model="universal-3-5-pro",
         min_turn_silence=100,
     ),
     vad_force_turn_endpoint=True,  # Default — Pipecat controls turns
@@ -437,7 +437,7 @@ In Pipecat mode, VAD + Smart Turn analyzer controls endpointing. `max_turn_silen
 stt = AssemblyAISTTService(
     api_key=os.getenv("ASSEMBLYAI_API_KEY"),
     connection_params=AssemblyAIConnectionParams(
-        speech_model="u3-rt-pro",
+        speech_model="universal-3-5-pro",
         min_turn_silence=100,
         max_turn_silence=1000,
     ),
@@ -451,7 +451,7 @@ stt = AssemblyAISTTService(
 stt = AssemblyAISTTService(
     api_key=os.getenv("ASSEMBLYAI_API_KEY"),
     connection_params=AssemblyAIConnectionParams(
-        speech_model="u3-rt-pro",
+        speech_model="universal-3-5-pro",
         min_turn_silence=100,
         keyterms_prompt=["Xiomara", "Saoirse", "Pipecat", "AssemblyAI"],
     ),
@@ -483,7 +483,7 @@ await task.queue_frame(
 stt = AssemblyAISTTService(
     api_key=os.getenv("ASSEMBLYAI_API_KEY"),
     connection_params=AssemblyAIConnectionParams(
-        speech_model="u3-rt-pro",
+        speech_model="universal-3-5-pro",
         speaker_labels=True,
     ),
     speaker_format="<Speaker {speaker}>{text}</Speaker {speaker}>",
