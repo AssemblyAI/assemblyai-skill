@@ -87,6 +87,24 @@ skills/
         └── api-reference.md          # Full API parameters, endpoints, webhooks
 ```
 
+## Testing code blocks
+
+Run the Markdown code block suite with pytest:
+
+```bash
+python -m pytest -m codeblocks
+```
+
+The suite collects every fenced block in `README.md` and `skills/**/*.md`. JSON blocks are parsed, Python blocks are compiled, shell blocks are checked with `bash -n`, JavaScript/TypeScript blocks are syntax-checked with Node, and plain/Markdown fences are counted.
+
+To execute live AssemblyAI examples that call the API, set `ASSEMBLYAI_API_KEY` and opt in:
+
+```bash
+ASSEMBLYAI_API_KEY=your_key ASSEMBLYAI_RUN_LIVE_CODEBLOCKS=1 python -m pytest -m codeblocks
+```
+
+Live mode rewrites `YOUR_API_KEY`, `https://example.com/audio.mp3`, and local audio placeholders to use environment-backed test values. Override the default public test audio with `ASSEMBLYAI_TEST_AUDIO_URL` or `ASSEMBLYAI_TEST_AUDIO_FILE`.
+
 ## Eval results
 
 The `assemblyai-workspace/` directory contains test results comparing skill vs. no-skill outputs across three scenarios:
