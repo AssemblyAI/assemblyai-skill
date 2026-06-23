@@ -102,7 +102,7 @@ config = aai.TranscriptionConfig(
         aai.PIIRedactionPolicy.phone_number,
         aai.PIIRedactionPolicy.email_address,
         aai.PIIRedactionPolicy.credit_card_number,
-        aai.PIIRedactionPolicy.ssn,
+        aai.PIIRedactionPolicy.us_social_security_number,
     ],
 )
 
@@ -138,7 +138,7 @@ config = aai.TranscriptionConfig(
 )
 
 transcript = transcriber.transcribe("https://example.com/audio.mp3", config=config)
-redacted_audio_url = transcript.redacted_audio_url
+redacted_audio_url = transcript.get_redacted_audio_url()
 ```
 
 ---

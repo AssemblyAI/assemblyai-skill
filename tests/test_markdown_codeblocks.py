@@ -131,7 +131,7 @@ def _run_python(block: CodeBlock, tmp_path: Path) -> None:
     if not RUN_LIVE:
         return
 
-    if any(package in block.code for package in ("livekit", "pipecat")):
+    if _skip_live_python_execution(block):
         return
 
     _require_api_key()
@@ -150,6 +150,18 @@ def _run_python(block: CodeBlock, tmp_path: Path) -> None:
         check=False,
     )
     assert result.returncode == 0, result.stderr or result.stdout
+
+
+def _skip_live_python_execution(block: CodeBlock) -> bool:
+    if any(package in block.code for package in ("livekit", "pipecat")):
+        return True
+
+    if block.path.name == "voice-agents.md" and any(
+        symbol in block.code for symbol in ("AssemblyAISTTService(", "TelnyxTransport(")
+    ):
+        return True
+
+    return False
 
 
 def _replace_shell_placeholders(code: str, tmp_path: Path) -> str:
