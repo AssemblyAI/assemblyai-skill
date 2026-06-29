@@ -17,6 +17,7 @@ Upload a local audio file to AssemblyAI's hosted storage.
 - Returns: `{ "upload_url": "..." }`
 - The returned `upload_url` is only accessible for transcription using the same API key project. Using a different project's key returns a **403** error.
 - SDKs handle upload automatically when you pass a local file path to the transcription method.
+- **Send the file as raw bytes.** With cURL use `--data-binary @file` (note the `@`). Using `-d`/`--data`, a JSON body, or a file-path *string* returns a successful `upload_url` but then fails downstream at transcription with `Transcoding failed. File type application/json` (or `text/plain`). This silent split between a 200 on upload and a later transcription failure is a common gotcha.
 
 ---
 
@@ -466,3 +467,27 @@ curl -X POST https://sync.assemblyai.com/transcribe \
 ```
 
 When to use: short pre-recorded clips needing an immediate response (voice messages, short call recordings, externally-segmented voice-agent utterances). For audio > 120s use the async REST API; for live mic audio use Streaming.
+
+## 17. Voice Agents REST API (Stored Agents)
+
+A REST API for creating **reusable** voice agents. An agent stores its `system_prompt`, `greeting`, `voice`, `tools`, `input`, and `output` server-side; you then bind a WebSocket session to it by sending `{"agent_id": "<id>"}` as the only field in your first `session.update` (see `references/voice-agents.md`). The same stored agent can be reused across the WebSocket API, browser, or Twilio.
+
+- **Base URL:** `https://agents.assemblyai.com` (same host as the Voice Agent WebSocket API)
+- **Auth:** `Authorization: YOUR_API_KEY` — the raw key works directly; a `Bearer ` prefix is also accepted.
+
+| Method & Path | Description |
+|---------------|-------------|
+| `POST /v1/agents` | Create an agent. Returns `201` with the full record including a generated `id`. |
+| `GET /v1/agents` | List agents (lightweight records, no tools/prompt), newest first. |
+| `GET /v1/agents/{agent_id}` | Retrieve one agent. Tool header **values** are masked as `"***"`. |
+| `PUT /v1/agents/{agent_id}` | Update an agent. Every field optional — send only what you want to change. |
+| `DELETE /v1/agents/{agent_id}` | Delete an agent. Returns `204`, no body. |
+
+**Create body** (`application/json`): required `name`, `system_prompt`, `voice`; optional `greeting`, `input`, `output`, `tools`. Note `voice` is a **top-level** field here (in the WebSocket `session.update` it lives under `output.voice`). `greeting` is spoken straight to TTS on connect — omit it to have the agent listen first.
+
+```bash
+curl -X POST https://agents.assemblyai.com/v1/agents \
+  -H 'Authorization: YOUR_API_KEY' \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Support Bot","system_prompt":"You are a concise support agent.","voice":"ivy","greeting":"Hi, how can I help?"}'
+```

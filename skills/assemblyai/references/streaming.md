@@ -77,6 +77,10 @@ A graceful shutdown requires sending an explicit terminate message:
 
 Wait for the `Termination` message from the server before closing the WebSocket connection.
 
+### Session-Based Billing
+
+Streaming is billed on **WebSocket-open duration per session**, and concurrent sessions accumulate billed time **in parallel**. A single call **dual-streamed under two separate session IDs** for 5 minutes bills as **10 minutes** of session time — opening a second session to transcribe the same audio (e.g. two languages, or a redundant feed) doubles the cost.
+
 ---
 
 ## Streaming Models
@@ -318,11 +322,12 @@ The webhook fires **once** after the session ends, delivering all finalized turn
 | Code | Meaning |
 |------|---------|
 | **3005** | Session cancelled (server error) |
-| **3006** | Invalid message type, invalid JSON, or invalid message |
+| **3006** | Invalid message type, invalid JSON/message, **or** session terminated due to inactivity (the `inactivity_timeout` you configured elapsed with no audio/messages — send `KeepAlive` to reset the timer) |
 | **3007** | Input duration violation — audio chunks must be 50ms–1000ms, or audio was sent faster than real-time |
 | **3008** | Session expired — 3-hour maximum reached or temporary token expired |
 | **3009** | Too many concurrent sessions |
-| **1008** | Missing authorization or account issue |
+| **1008** | Missing authorization or account issue (insufficient balance, account disabled, etc.) |
+| **1011** | Internal error — an unexpected server-side error while *establishing* the connection (e.g. during auth). Retry; if it persists, contact support |
 
 ---
 
