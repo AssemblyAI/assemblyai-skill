@@ -47,10 +47,13 @@ Authorization: YOUR_API_KEY
 
 | Model | Languages | Best For |
 |-------|-----------|----------|
-| **Universal-3 Pro** | 6 (en, es, de, fr, pt, it) | Highest accuracy, promptable transcription, keyterms up to 1,000 words |
+| **Universal-3.5 Pro** ⚠️ Preview | 18 (auto-falls back to Universal-2 for the other 99) | Latest flagship: best accuracy, native code-switching across its 18 languages, contextual `prompt`, keyterms up to 1,000 words |
+| **Universal-3 Pro** | 6 (en, es, de, fr, pt, it) | Highest accuracy (GA), promptable transcription, keyterms up to 1,000 words |
 | **Universal-2** | 99 | Broadest language coverage, keyterms up to 200 words |
 
-Use `speech_models` as a priority list with fallback: `["universal-3-pro", "universal-2"]`.
+Use `speech_models` as a priority list with fallback: `["universal-3-pro", "universal-2"]` (the default when omitted).
+
+**Universal-3.5 Pro is also available for pre-recorded/async transcription** (currently **Preview**), not just streaming. Opt in with `speech_models: ["universal-3-5-pro"]` on `POST /v2/transcript`. It supports contextual `prompt` (a plain-language *description* of the audio — domain/scenario/full detail) and `keyterms_prompt` (up to 1,000 terms), does native code-switching, and **auto-falls back to Universal-2** for languages outside its 18. Note: the formal OpenAPI `speech_models` enum still lists only `universal-3-pro`/`universal-2`, but the async API accepts `universal-3-5-pro`.
 
 ### Streaming
 
@@ -73,11 +76,13 @@ For realtime/streaming STT, use `speech_model: "universal-3-5-pro"` by default. 
 - **Supported languages:** English, Spanish, German, French (4 languages only)
 - Billed as a separate add-on. If used with an unsupported language, the API ignores `domain` and returns a warning — transcript still completes and you are NOT charged for Medical Mode.
 
-### Prompting (Universal-3 Pro only)
+### Prompting (Universal-3 Pro / Universal-3.5 Pro)
 
 Two mutually exclusive customization parameters:
 - **`prompt`** (string, up to 1500 words): Natural language instructions for transcription style
 - **`keyterms_prompt`** (string[], up to 1000 terms): Domain vocabulary for proper nouns, brands, technical terms
+
+**Universal-3.5 Pro uses *contextual* prompting:** its `prompt` is a plain-language *description* of the audio (domain → scenario → full detail), not style/formatting instructions. Use the least-specific level that covers your case; keep it to one short block, not a keyword list.
 
 **Prompting best practices:**
 - Use positive, authoritative instructions — NEVER use negative phrasing ("Don't", "Avoid", "Never") as the model gets confused
