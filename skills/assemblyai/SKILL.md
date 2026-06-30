@@ -47,13 +47,13 @@ Authorization: YOUR_API_KEY
 
 | Model | Languages | Best For |
 |-------|-----------|----------|
-| **Universal-3.5 Pro** ⚠️ Preview | 18 (auto-falls back to Universal-2 for the other 99) | Latest flagship: best accuracy, native code-switching across its 18 languages, contextual `prompt`, keyterms up to 1,000 words |
-| **Universal-3 Pro** | 6 (en, es, de, fr, pt, it) | Highest accuracy (GA), promptable transcription, keyterms up to 1,000 words |
+| **Universal-3.5 Pro** | 18 (auto-falls back to Universal-2 for the other 99) | Latest flagship: best accuracy, native code-switching across its 18 languages, contextual `prompt`, keyterms up to 1,000 words |
+| **Universal-3 Pro** | 6 (en, es, de, fr, pt, it) | Highest accuracy, promptable transcription, keyterms up to 1,000 words |
 | **Universal-2** | 99 | Broadest language coverage, keyterms up to 200 words |
 
 Use `speech_models` as a priority list with fallback: `["universal-3-pro", "universal-2"]` (the default when omitted).
 
-**Universal-3.5 Pro is also available for pre-recorded/async transcription** (currently **Preview**), not just streaming. Opt in with `speech_models: ["universal-3-5-pro"]` on `POST /v2/transcript`. It supports contextual `prompt` (a plain-language *description* of the audio — domain/scenario/full detail) and `keyterms_prompt` (up to 1,000 terms), does native code-switching, and **auto-falls back to Universal-2** for languages outside its 18. Note: the formal OpenAPI `speech_models` enum still lists only `universal-3-pro`/`universal-2`, but the async API accepts `universal-3-5-pro`.
+**Universal-3.5 Pro is also available for pre-recorded/async transcription**, not just streaming. Opt in with `speech_models: ["universal-3-5-pro"]` on `POST /v2/transcript`. It supports contextual `prompt` (a plain-language *description* of the audio — domain/scenario/full detail) and `keyterms_prompt` (up to 1,000 terms), does native code-switching, and **auto-falls back to Universal-2** for languages outside its 18. Note: the formal OpenAPI `speech_models` enum still lists only `universal-3-pro`/`universal-2`, but the async API accepts `universal-3-5-pro`.
 
 ### Streaming
 
