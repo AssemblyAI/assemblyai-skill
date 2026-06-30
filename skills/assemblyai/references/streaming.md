@@ -24,8 +24,8 @@ For new realtime/streaming code, use **`speech_model=universal-3-5-pro`** by def
 | `encoding` | Audio encoding: `pcm_s16le` or `pcm_mulaw` |
 | `end_of_turn_confidence_threshold` | Confidence threshold for turn detection. Only affects Universal Streaming, not U3 Pro. **Officially deprecated** — tune `min_turn_silence`/`max_turn_silence` instead. |
 | `format_turns` | Set to `true` to enable formatted final transcripts with punctuation, casing, and inverse text normalization (dates, times, phone numbers). Also activates turn-level keyterm boosting for Universal Streaming models. **Does NOT control digit rendering** — numerals (e.g. "22") are a model behavior, and lexical number output (e.g. "twenty-two") is not supported in streaming. |
-| `prompt` | **universal-3-5-pro / u3-rt-pro only.** Natural-language *context about the audio* (domain, topic, scenario, conversation details) — **NOT** behavioral/formatting instructions. The transcription instruction (verbatim behavior, punctuation, formatting) is built in and managed by AssemblyAI; formatting or behavioral commands placed in `prompt` are not supported. Mutually exclusive with `keyterms_prompt`. If omitted, a built-in default prompt optimized for turn detection is used automatically. Recommended: test with no prompt first, then add context only for domain vocabulary the model gets wrong. |
-| `keyterms_prompt` | JSON-encoded array of strings (up to 100 terms, max 50 chars each) to bias transcription (universal-3-5-pro, u3-rt-pro, and Universal Streaming). Mutually exclusive with `prompt`. When passing via URL query param, must be JSON.stringify'd: `keyterms_prompt=["term1","term2"]`. Costs additional $0.04/hr. |
+| `prompt` | **universal-3-5-pro / u3-rt-pro only.** Natural-language *context about the audio* (domain, topic, scenario, conversation details) — **NOT** behavioral/formatting instructions. The transcription instruction (verbatim behavior, punctuation, formatting) is built in and managed by AssemblyAI; formatting or behavioral commands placed in `prompt` are not supported. **Complementary with `keyterms_prompt`** — use either or both together. If omitted, a built-in default prompt optimized for turn detection is used automatically. Recommended: test with no prompt first, then add context only for domain vocabulary the model gets wrong. |
+| `keyterms_prompt` | JSON-encoded array of strings (up to 100 terms, max 50 chars each) to bias transcription (universal-3-5-pro, u3-rt-pro, and Universal Streaming). **Complementary with `prompt`** — both can be set together. When passing via URL query param, must be JSON.stringify'd: `keyterms_prompt=["term1","term2"]`. Costs additional $0.04/hr. |
 | `inactivity_timeout` | Seconds of silence before session auto-closes |
 | `speaker_labels` | Enable diarization (`true`/`false`) |
 | `max_speakers` | Maximum number of speakers for diarization |
@@ -76,6 +76,10 @@ A graceful shutdown requires sending an explicit terminate message:
 ```
 
 Wait for the `Termination` message from the server before closing the WebSocket connection.
+
+### Session-Based Billing
+
+Streaming is billed on **WebSocket-open duration per session**, and concurrent sessions accumulate billed time **in parallel**. A single call **dual-streamed under two separate session IDs** for 5 minutes bills as **10 minutes** of session time — opening a second session to transcribe the same audio (e.g. two languages, or a redundant feed) doubles the cost.
 
 ---
 
@@ -318,11 +322,12 @@ The webhook fires **once** after the session ends, delivering all finalized turn
 | Code | Meaning |
 |------|---------|
 | **3005** | Session cancelled (server error) |
-| **3006** | Invalid message type, invalid JSON, or invalid message |
+| **3006** | Invalid message type, invalid JSON/message, **or** session terminated due to inactivity (the `inactivity_timeout` you configured elapsed with no audio/messages — send `KeepAlive` to reset the timer) |
 | **3007** | Input duration violation — audio chunks must be 50ms–1000ms, or audio was sent faster than real-time |
 | **3008** | Session expired — 3-hour maximum reached or temporary token expired |
 | **3009** | Too many concurrent sessions |
-| **1008** | Missing authorization or account issue |
+| **1008** | Missing authorization or account issue (insufficient balance, account disabled, etc.) |
+| **1011** | Internal error — an unexpected server-side error while *establishing* the connection (e.g. during auth). Retry; if it persists, contact support |
 
 ---
 

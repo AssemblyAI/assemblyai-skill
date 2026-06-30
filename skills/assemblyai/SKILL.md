@@ -47,10 +47,13 @@ Authorization: YOUR_API_KEY
 
 | Model | Languages | Best For |
 |-------|-----------|----------|
+| **Universal-3.5 Pro** | 18 (auto-falls back to Universal-2 for the other 99) | Latest flagship: best accuracy, native code-switching across its 18 languages, contextual `prompt`, keyterms up to 1,000 words |
 | **Universal-3 Pro** | 6 (en, es, de, fr, pt, it) | Highest accuracy, promptable transcription, keyterms up to 1,000 words |
 | **Universal-2** | 99 | Broadest language coverage, keyterms up to 200 words |
 
-Use `speech_models` as a priority list with fallback: `["universal-3-pro", "universal-2"]`.
+Use `speech_models` as a priority list with fallback: `["universal-3-pro", "universal-2"]` (the default when omitted).
+
+**Universal-3.5 Pro is also available for pre-recorded/async transcription**, not just streaming. Opt in with `speech_models: ["universal-3-5-pro"]` on `POST /v2/transcript`. It supports contextual `prompt` (a plain-language *description* of the audio — domain/scenario/full detail) and `keyterms_prompt` (up to 1,000 terms), does native code-switching, and **auto-falls back to Universal-2** for languages outside its 18. Note: the formal OpenAPI `speech_models` enum still lists only `universal-3-pro`/`universal-2`, but the async API accepts `universal-3-5-pro`.
 
 ### Streaming
 
@@ -73,16 +76,27 @@ For realtime/streaming STT, use `speech_model: "universal-3-5-pro"` by default. 
 - **Supported languages:** English, Spanish, German, French (4 languages only)
 - Billed as a separate add-on. If used with an unsupported language, the API ignores `domain` and returns a warning — transcript still completes and you are NOT charged for Medical Mode.
 
-### Prompting (Universal-3 Pro only)
+### Prompting (Universal-3.5 Pro)
 
-Two mutually exclusive customization parameters:
-- **`prompt`** (string, up to 1500 words): Natural language instructions for transcription style
-- **`keyterms_prompt`** (string[], up to 1000 terms): Domain vocabulary for proper nouns, brands, technical terms
+`prompt` and `keyterms_prompt` are **complementary** — use either, or both together. Neither changes the output format, and both work the same way for **streaming and async** (`POST /v2/transcript`). Transcription behavior (verbatim, punctuation, formatting) is built in and managed by AssemblyAI.
 
-**Prompting best practices:**
-- Use positive, authoritative instructions — NEVER use negative phrasing ("Don't", "Avoid", "Never") as the model gets confused
-- Limit to 3-6 instructions for best results
-- Prefix critical instructions with "Non-negotiable:" or "Required:"
+- **`prompt`** (string, ~1500 chars max): a plain-language **description of the audio** — its domain, scenario, or full details. It carries *context*, **not instructions** — formatting/behavioral commands (punctuation rules, "transcribe verbatim", "don't…") are not supported and are ignored. The model stays grounded in the audio: irrelevant or only-partially-applicable context won't make it insert words that weren't spoken, so you can safely send the same description on every session/segment.
+- **`keyterms_prompt`** (string[]): an explicit list of names/brands/domain terms to boost. Streaming: up to **100** terms, ≤50 chars each. Async: up to **1,000** terms.
+
+**Contextual prompt — three levels of specificity** (use the least specific that covers your case):
+
+| Level | Length | Contains | Example |
+|-------|--------|----------|---------|
+| Domain | 2–5 words | The field only | `Medical consultation call.` |
+| Scenario | 5–15 words | What the call is about | `Cardiology consultation about chest pain symptoms.` |
+| Detailed | 20–50 words | Names, products, identifiers | `Cardiology consultation between Dr. Smith and a patient about recurring chest pain, ECG results, and hypertension medication.` |
+
+**Best practices:**
+- **Start with no `prompt` and no `keyterms_prompt`** — the model is optimized out of the box. Add context only for domain vocabulary it gets wrong, starting at the broadest level.
+- Write plain, complete sentences that *describe* the recording; keep it to one short block, not a keyword list (that's what `keyterms_prompt` is for).
+- Keyterms: use exact spelling/capitalization; avoid common words (over-inclusion causes overcorrection/hallucination).
+- Specify language via `language_code` (preferred) or by naming it in the prompt (e.g. "Spanish customer support call…").
+- Streaming: update both mid-session via `UpdateConfiguration`; a new keyterms array replaces the prior set, `[]` clears it.
 
 ## Sync STT API (short-form audio, ≤120s)
 
@@ -114,20 +128,21 @@ See `references/llm-gateway.md` for models, tool calling, structured outputs, an
 
 | Gotcha | Details |
 |--------|---------|
-| `prompt` + `keyterms_prompt` | **Mutually exclusive** — use one or the other |
+| `prompt` + `keyterms_prompt` | **Complementary** for Universal-3.5 Pro — use either or both together. `prompt` is a contextual *description* of the audio; `keyterms_prompt` is an explicit term list. Neither changes output formatting |
 | `summarization` / `auto_chapters` | **Deprecated.** Use LLM Gateway instead (transcribe → send text to LLM) |
 | PII redaction scope | Only redacts words in `text` — other feature outputs (entities, summaries) may still expose sensitive data |
 | Upload key scoping | Files uploaded with one API key project cannot be transcribed with a different project's key |
 | Structured outputs | Supported by OpenAI, Gemini, Claude 4.5+, Qwen, and Kimi — Claude 3.x does NOT support `json_schema` structured outputs |
 | U3 Pro-family turn detection | `universal-3-5-pro` and `u3-rt-pro` use punctuation (`.` `?` `!`), NOT confidence thresholds — `end_of_turn_confidence_threshold` has no effect |
-| Negative prompts | Never use "Don't" or "Avoid" in prompts — rephrase as positive instructions |
+| `prompt` is context, not instructions | Universal-3.5 Pro's `prompt` *describes* the audio (domain/scenario/details). Formatting or behavioral commands (punctuation rules, "transcribe verbatim", negative directives like "don't…") are **not supported** and are ignored — transcription behavior is managed internally |
 | PII audio redaction method | `override_audio_redaction_method: "silence"` replaces PII with silence instead of default beep |
 | Language detection | Requires minimum 15 seconds of spoken audio for reliable results |
 | LLM Gateway EU region | Only Anthropic Claude and Google Gemini models available — OpenAI models are NOT supported in EU |
-| Disfluencies | `disfluencies: true` works on Universal-3 Pro and Universal-2. U3 Pro can also preserve disfluencies via prompting for finer-grained control |
+| Disfluencies | Enable with `disfluencies: true` to keep "um"/"uh" in the transcript |
 | Medical Mode unsupported language | API silently skips Medical Mode and does not charge for it — check for warning in response |
 | Voice Agent API URL | The Voice Agent endpoint is `wss://agents.assemblyai.com/v1/ws` — NOT `/v1/voice` (renamed April 2026), `/v1/realtime` (older), or `speech-to-speech.us.assemblyai.com` (very old) |
 | Voice Agent `tool.call` field | The argument dict is named `arguments`, not `args` (renamed April 2026) |
+| Voice Agent stored agents (`agent_id`) | The first `session.update` either binds a reusable stored agent via `{"agent_id":"<id>"}` (the **only** field in `session`) OR sends inline config (`system_prompt`/`greeting`/`tools`/`input`/`output`) — the two modes are **mutually exclusive**; sending both raises a validation error. Create stored agents with `POST https://agents.assemblyai.com/v1/agents` |
 | Voice Agent turn detection fields | Use `min_silence` (default 1000ms) and `max_silence` (default 3000ms) under `session.input.turn_detection` — `min_turn_silence`/`max_turn_silence` are the streaming/LiveKit/Pipecat field names, not Voice Agent API. Both must be in `[50, 10000]` ms with `min_silence < max_silence`. Setting either explicitly disables adaptive endpointing for the rest of the session |
 | Voice Agent immutable fields | After `session.ready`, **immutable**: `greeting`, `output.voice`, `output.format` — changing them returns `immutable_field`. **Mutable**: `system_prompt`, `input.turn_detection`, `input.keyterms` (up to 100 strings), `output.volume` (0–100), `tools`, `input.format` |
 | Voice Agent greeting | The `greeting` is sent **straight to the TTS engine** — it is NOT passed through the LLM. Whatever string you set is exactly what the user hears, word for word. Don't write meta-greetings like "Greet the user warmly" — TTS will literally speak that |
@@ -152,6 +167,8 @@ See `references/llm-gateway.md` for models, tool calling, structured outputs, an
 | Using `summarization` or `auto_chapters` | **Deprecated.** Use LLM Gateway instead (transcribe then summarize via LLM) |
 | LeMUR `transcript_ids` with LLM Gateway | Pass transcript text in messages, not IDs |
 | `anthropic/claude-...` model IDs | No provider prefix: `claude-sonnet-4-5-20250929` not `anthropic/claude-sonnet-4-5-20250929` |
+| `claude-opus-4-20250514` / `claude-sonnet-4-20250514` on LLM Gateway | **Removed June 2026.** Use Claude Opus 4.5/4.6/4.7 or Claude Sonnet 4.5/4.6 |
+| Uploading to `/v2/upload` with `-d`/`--data` or a JSON body | Use `--data-binary @file` (raw bytes). `-d`/JSON returns a valid `upload_url` but transcription later fails with `Transcoding failed. File type application/json` |
 | Using Java/Go/C# SDKs | **Discontinued.** Use Python, JS/TS, Ruby, or raw API |
 | `word_boost` on the async REST API | Use `keyterms_prompt` instead. **Exception:** the Sync STT API *does* use `word_boost` (in its `config` part) — that's its documented keyterms param |
 | Hardcoding v2 streaming URL | v3 (`/v3/ws`) is current; v2 still works but is legacy |
@@ -182,7 +199,7 @@ Read the relevant reference file based on what the user needs:
 | `references/llm-gateway.md` | Applying LLMs to transcripts, tool calling, available models |
 | `references/speech-understanding.md` | Translation, speaker identification, custom formatting |
 | `references/audio-intelligence.md` | PII redaction, diarization, summarization, sentiment, chapters |
-| `references/api-reference.md` | Full parameter list, export endpoints, webhooks, upload, PII policies, Sync STT API |
+| `references/api-reference.md` | Full parameter list, export endpoints, webhooks, upload, PII policies, Sync STT API, Voice Agents REST API (stored agents) |
 
 ## API Spec Source of Truth
 

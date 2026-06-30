@@ -17,6 +17,7 @@ Upload a local audio file to AssemblyAI's hosted storage.
 - Returns: `{ "upload_url": "..." }`
 - The returned `upload_url` is only accessible for transcription using the same API key project. Using a different project's key returns a **403** error.
 - SDKs handle upload automatically when you pass a local file path to the transcription method.
+- **Send the file as raw bytes.** With cURL use `--data-binary @file` (note the `@`). Using `-d`/`--data`, a JSON body, or a file-path *string* returns a successful `upload_url` but then fails downstream at transcription with `Transcoding failed. File type application/json` (or `text/plain`). This silent split between a 200 on upload and a later transcription failure is a common gotcha.
 
 ---
 
@@ -31,9 +32,9 @@ Submit an audio file for transcription. Send a JSON body with the parameters bel
 | Parameter | Type | Description |
 |---|---|---|
 | `audio_url` | string | **Required.** URL of the audio file to transcribe. Can be a public URL or an `upload_url` from the upload endpoint. |
-| `speech_models` | array | **Optional** (as of June 2026). Priority-ordered list of speech models to use (e.g., `["universal-3-pro", "universal-2"]`). First model is used if supported; falls back to next. If omitted, defaults to `["universal-3-pro", "universal-2"]`. |
-| `prompt` | string | Provide context or instructions to the model (e.g., spelling guidance, topic context). Mutually exclusive with `keyterms_prompt`. |
-| `keyterms_prompt` | array | List of key terms/phrases (strings) to boost recognition accuracy — up to **200** terms (Universal-2) or **1000** terms (Universal-3 Pro), max **6 words per phrase**. Mutually exclusive with `prompt`. |
+| `speech_models` | array | **Optional** (as of June 2026). Priority-ordered list of speech models to use (e.g., `["universal-3-5-pro", "universal-2"]`). First model is used if supported; falls back to next. If omitted, defaults to `["universal-3-pro", "universal-2"]`. Universal-3.5 Pro is accepted here (`["universal-3-5-pro"]`). |
+| `prompt` | string | For Universal-3.5 Pro, a contextual *description* of the audio (domain → scenario → full detail), **not** formatting/behavioral instructions (those are ignored). **Complementary with `keyterms_prompt`** — both can be set together. |
+| `keyterms_prompt` | array | List of key terms/phrases (strings) to boost recognition accuracy — up to **1000** terms for Universal-3.5 Pro, **200** for Universal-2, max **6 words per phrase**. **Complementary with `prompt`** — both can be set together. |
 | `language_code` | string | Language code (e.g., `"en_us"`, `"es"`, `"fr"`). Defaults to `"en_us"`. |
 | `language_detection` | boolean | Enable automatic language detection. Default `false`. |
 | `language_detection_options` | object | Options for language detection: `expected_languages` (array of language codes), `fallback_language` (string), `code_switching` (boolean, Universal-2 only), `code_switching_confidence_threshold` (float, default 0.3). |
@@ -57,7 +58,7 @@ Submit an audio file for transcription. Send a JSON body with the parameters bel
 | `redact_pii_return_unredacted` | boolean | When `true`, returns the original unredacted transcript alongside the redacted one in a single request. Response then includes `unredacted_text`, `unredacted_words`, and `unredacted_utterances`. Default `false`. |
 | `redact_static_entities` | object | Literal find-and-replace redaction layered on top of standard PII redaction. Maps a custom label to a list of exact terms, e.g. `{"INTERNAL_TOOL": ["Bearclaw", "Cubclaw"]}`. Requires `redact_pii: true` (else 400); matched terms are also redacted in audio when `redact_pii_audio` is on. |
 | `filter_profanity` | boolean | Filter profanity from transcript text. Default `false`. |
-| `disfluencies` | boolean | Include disfluencies (um, uh, etc.) in transcript. Default `false`. Supported on Universal-3 Pro and Universal-2. U3 Pro can also preserve disfluencies via prompting for finer-grained control. |
+| `disfluencies` | boolean | Include disfluencies (um, uh, etc.) in transcript. Default `false`. |
 | `multichannel` | boolean | Enable multichannel transcription. Default `false`. |
 | `custom_spelling` | array | Array of custom spelling rules. See Custom Spelling section. |
 | `webhook_url` | string | URL to receive a webhook when transcription completes. |
@@ -409,7 +410,7 @@ POST https://sync.assemblyai.com/transcribe
 | `sample_rate` | integer | Required for `audio/pcm`. One of 8000, 16000, 22050, 24000, 32000, 44100, 48000. WAV reads it from the header. |
 | `channels` | integer | Required for `audio/pcm`. `1` or `2` (stereo down-mixed to mono internally). |
 
-`prompt` and `word_boost` can be combined in the same `config` part (unlike the async API where `prompt` and `keyterms_prompt` are mutually exclusive).
+`prompt` and `word_boost` can both be set in the same `config` part.
 
 ### Response
 
@@ -466,3 +467,27 @@ curl -X POST https://sync.assemblyai.com/transcribe \
 ```
 
 When to use: short pre-recorded clips needing an immediate response (voice messages, short call recordings, externally-segmented voice-agent utterances). For audio > 120s use the async REST API; for live mic audio use Streaming.
+
+## 17. Voice Agents REST API (Stored Agents)
+
+A REST API for creating **reusable** voice agents. An agent stores its `system_prompt`, `greeting`, `voice`, `tools`, `input`, and `output` server-side; you then bind a WebSocket session to it by sending `{"agent_id": "<id>"}` as the only field in your first `session.update` (see `references/voice-agents.md`). The same stored agent can be reused across the WebSocket API, browser, or Twilio.
+
+- **Base URL:** `https://agents.assemblyai.com` (same host as the Voice Agent WebSocket API)
+- **Auth:** `Authorization: YOUR_API_KEY` — the raw key works directly; a `Bearer ` prefix is also accepted.
+
+| Method & Path | Description |
+|---------------|-------------|
+| `POST /v1/agents` | Create an agent. Returns `201` with the full record including a generated `id`. |
+| `GET /v1/agents` | List agents (lightweight records, no tools/prompt), newest first. |
+| `GET /v1/agents/{agent_id}` | Retrieve one agent. Tool header **values** are masked as `"***"`. |
+| `PUT /v1/agents/{agent_id}` | Update an agent. Every field optional — send only what you want to change. |
+| `DELETE /v1/agents/{agent_id}` | Delete an agent. Returns `204`, no body. |
+
+**Create body** (`application/json`): required `name`, `system_prompt`, `voice`; optional `greeting`, `input`, `output`, `tools`. Note `voice` is a **top-level** field here (in the WebSocket `session.update` it lives under `output.voice`). `greeting` is spoken straight to TTS on connect — omit it to have the agent listen first.
+
+```bash
+curl -X POST https://agents.assemblyai.com/v1/agents \
+  -H 'Authorization: YOUR_API_KEY' \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Support Bot","system_prompt":"You are a concise support agent.","voice":"ivy","greeting":"Hi, how can I help?"}'
+```

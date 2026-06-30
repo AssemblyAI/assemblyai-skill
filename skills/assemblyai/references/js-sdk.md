@@ -186,31 +186,16 @@ for (const result of transcript.content_safety_labels!.results!) {
 
 ---
 
-## 6. Prompting with Universal-3 Pro
+## 6. Prompting with Universal-3.5 Pro
 
-The `prompt` and `keyterms_prompt` parameters are **mutually exclusive**.
-
-### Using `prompt`
-
-Provide free-form context to guide transcription accuracy.
+`prompt` and `keyterms_prompt` are **complementary** — use either or both together. `prompt` is a contextual *description* of the audio (domain → scenario → full detail), **not** formatting/behavioral instructions (those are ignored). `keyterms_prompt` is an explicit list of terms to boost (up to 1,000 for async). Start with neither and add only for vocabulary the model gets wrong.
 
 ```typescript
 const transcript = await client.transcripts.transcribe({
   audio: "https://example.com/audio.mp3",
-  speech_model: "universal-3-pro",
-  prompt: "This is a medical consultation discussing cardiology topics including echocardiograms and EKGs.",
-});
-```
-
-### Using `keyterms_prompt`
-
-Provide a list of key terms to boost recognition accuracy.
-
-```typescript
-const transcript = await client.transcripts.transcribe({
-  audio: "https://example.com/audio.mp3",
-  speech_model: "universal-3-pro",
-  keyterms_prompt: ["echocardiogram", "EKG", "arrhythmia", "cardiomyopathy"],
+  speech_models: ["universal-3-5-pro"],
+  prompt: "Cardiology consultation about chest pain symptoms.",
+  keyterms_prompt: ["Dr. Smith", "ECG", "hypertension"],
 });
 ```
 

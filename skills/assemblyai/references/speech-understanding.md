@@ -85,6 +85,8 @@ Distinct from diarization. Maps generic diarization labels (Speaker A, B, …) t
 - `known_values` (array of strings): list of known names or roles, max 35 chars each. Required when `speaker_type` is `"role"` (and `speakers` is absent); optional when `"name"`.
 - `speakers` (array of objects): richer metadata for better accuracy. Each object **must include `name` (for `speaker_type: "name"`) or `role` (for `speaker_type: "role"`)** plus an optional `description`. Any additional custom properties (`company`, `title`, `department`, …) are allowed. Use `known_values` **or** `speakers`, not both.
 
+The current docs now lead with `speakers` as the primary form for **both** name and role identification (e.g. `[{"name": "Michel Martin"}]` or `[{"role": "Interviewer"}]`); `known_values` remains fully supported in the API.
+
 ### Example with known_values
 
 ```json

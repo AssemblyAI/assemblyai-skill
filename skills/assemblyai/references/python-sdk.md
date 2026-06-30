@@ -254,39 +254,22 @@ print(transcript.text)
 
 ---
 
-## 7. Prompting with Universal-3 Pro
+## 7. Prompting with Universal-3.5 Pro
 
-Use `prompt` or `keyterms_prompt` to guide transcription. These two options are **mutually exclusive** — use one or the other, not both.
-
-### Using `prompt`
-
-A free-form natural language prompt to provide context:
+`prompt` and `keyterms_prompt` are **complementary** — use either, or both together. `prompt` is a contextual *description* of the audio (domain → scenario → full detail), **not** formatting/behavioral instructions (those are ignored). `keyterms_prompt` is an explicit list of terms to boost (up to 1,000 for async). Start with neither and add only for vocabulary the model gets wrong.
 
 ```python
 config = aai.TranscriptionConfig(
-    speech_models=[aai.SpeechModel.universal_3_pro],
-    prompt="This is a medical consultation discussing cardiology and hypertension.",
+    speech_models=["universal-3-5-pro"],
+    prompt="Cardiology consultation about chest pain symptoms.",
+    keyterms_prompt=["Dr. Smith", "ECG", "hypertension"],
 )
 
-transcript = transcriber.transcribe("https://example.com/audio.mp3", config=config)
+transcript = aai.Transcriber().transcribe("https://example.com/audio.mp3", config)
 print(transcript.text)
 ```
 
-### Using `keyterms_prompt`
-
-A list of key terms to boost recognition accuracy:
-
-```python
-config = aai.TranscriptionConfig(
-    speech_models=[aai.SpeechModel.universal_3_pro],
-    keyterms_prompt=["Kubernetes", "PostgreSQL", "gRPC", "Terraform"],
-)
-
-transcript = transcriber.transcribe("https://example.com/audio.mp3", config=config)
-print(transcript.text)
-```
-
-> **Note on disfluencies:** The `disfluencies=True` option (to include "ums" and "uhs") only works with Universal-2. For Universal-3 Pro, use a `prompt` to instruct the model to include disfluencies instead.
+> **Note on disfluencies:** Enable `disfluencies=True` to keep "ums" and "uhs" in the transcript.
 
 ---
 

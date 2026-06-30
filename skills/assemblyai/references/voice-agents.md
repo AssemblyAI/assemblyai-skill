@@ -116,6 +116,15 @@ Sessions are preserved for **30 seconds** after disconnection. Reconnect using `
 }
 ```
 
+### Stored agents vs. inline config (`agent_id`)
+
+The first `session.update` configures the agent one of **two mutually exclusive** ways:
+
+- **Stored agent** — send `{"type": "session.update", "session": {"agent_id": "<id>"}}` with `agent_id` as the *only* field in `session`. The agent's stored `system_prompt`, `greeting`, `tools`, `input`, and `output` are applied server-side. Create reusable stored agents via the Agents REST API (`POST https://agents.assemblyai.com/v1/agents` — see `references/api-reference.md`).
+- **Inline config** — omit `agent_id` and send `system_prompt`, `greeting`, `tools`, `input`, `output` directly (the example above). Best for one-off or fully dynamic agents.
+
+`agent_id` is **mutually exclusive** with the inline fields — sending both in the same `session.update` raises a validation error. `agent_id` can only be set in the **first** `session.update`, before `session.ready`. After binding, you can still send later `session.update` messages to change mutable fields.
+
 ### Tool Definition Fields
 
 | Field | Type | Default | Notes |

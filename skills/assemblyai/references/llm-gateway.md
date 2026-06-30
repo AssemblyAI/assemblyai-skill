@@ -36,9 +36,11 @@ Model IDs have NO provider prefix (e.g., use `claude-sonnet-4-5-20250929`, not `
 | Claude Opus 4.5 | `claude-opus-4-5-20251101` |
 | Claude Sonnet 4.5 | `claude-sonnet-4-5-20250929` |
 | Claude Haiku 4.5 | `claude-haiku-4-5-20251001` |
-| Claude Opus 4 | `claude-opus-4-20250514` |
-| Claude Sonnet 4 | `claude-sonnet-4-20250514` |
+| Claude Opus 4 ⚠️ **removed June 2026** | `claude-opus-4-20250514` |
+| Claude Sonnet 4 ⚠️ **removed June 2026** | `claude-sonnet-4-20250514` |
 | Claude 3.0 Haiku ⚠️ **retired** | `claude-3-haiku-20240307` |
+
+`claude-opus-4-20250514` and `claude-sonnet-4-20250514` were removed from the LLM Gateway's available-models list in June 2026 — don't suggest them. Use Claude Opus 4.5/4.6/4.7 or Claude Sonnet 4.5/4.6 instead.
 
 ### OpenAI (GPT)
 
