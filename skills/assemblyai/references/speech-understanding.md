@@ -31,7 +31,7 @@ Auth header: `Authorization: API_KEY` (no `Bearer` prefix).
 
 Translates the transcript into one or more target languages.
 
-- **Models:** Universal-3 Pro and Universal-2 only. **Regions:** US & EU. Supports 100+ language codes.
+- **Models:** Universal-3.5 Pro and Universal-2 only. **Regions:** US & EU. Supports 100+ language codes.
 
 ### Parameters (`speech_understanding.request.translation`)
 

@@ -43,17 +43,16 @@ Authorization: YOUR_API_KEY
 
 ## Speech-to-Text Models
 
+**`universal-3-5-pro` is the model to use across the board.** It is GA for **both** realtime/streaming and pre-recorded/async transcription and is the default on each. Use it everywhere by default; drop to `universal-2` only for cost or for languages outside Universal-3.5 Pro's 18. `universal-3-pro` (async) and `u3-rt-pro` (streaming) have both been **superseded by `universal-3-5-pro`** and removed from their model lists/enums.
+
 ### Pre-Recorded
 
 | Model | Languages | Best For |
 |-------|-----------|----------|
-| **Universal-3.5 Pro** | 18 (auto-falls back to Universal-2 for the other 99) | Latest flagship: best accuracy, native code-switching across its 18 languages, contextual `prompt`, keyterms up to 1,000 words |
-| **Universal-3 Pro** | 6 (en, es, de, fr, pt, it) | Highest accuracy, promptable transcription, keyterms up to 1,000 words |
-| **Universal-2** | 99 | Broadest language coverage, keyterms up to 200 words |
+| **Universal-3.5 Pro** (recommended default) | 18 (auto-falls back to Universal-2 for the other 99) | Flagship: best accuracy, fastest, native code-switching across its 18 languages, contextual `prompt`, keyterms up to 1,000 words |
+| **Universal-2** | 99 | Cost-effective; broadest language coverage; keyterms up to 200 words; fallback for languages outside Universal-3.5 Pro's 18 |
 
-Use `speech_models` as a priority list with fallback: `["universal-3-pro", "universal-2"]` (the default when omitted).
-
-**Universal-3.5 Pro is also available for pre-recorded/async transcription**, not just streaming. Opt in with `speech_models: ["universal-3-5-pro"]` on `POST /v2/transcript`. It supports contextual `prompt` (a plain-language *description* of the audio — domain/scenario/full detail) and `keyterms_prompt` (up to 1,000 terms), does native code-switching, and **auto-falls back to Universal-2** for languages outside its 18. Note: the formal OpenAPI `speech_models` enum still lists only `universal-3-pro`/`universal-2`, but the async API accepts `universal-3-5-pro`.
+On `POST /v2/transcript`, `speech_models` is a priority list with fallback and **defaults to `["universal-3-5-pro", "universal-2"]`** when omitted — Universal-3.5 Pro handles its 18 languages and automatically falls back to Universal-2 for the rest. The async `speech_models` enum now accepts only `universal-3-5-pro` and `universal-2` (`universal-3-pro` has been removed, superseded by `universal-3-5-pro`). Universal-3.5 Pro supports contextual `prompt` (a plain-language *description* of the audio) and `keyterms_prompt` (up to 1,000 terms). Check the `speech_model_used` response field to see which model actually ran.
 
 ### Streaming
 
@@ -71,7 +70,7 @@ For realtime/streaming STT, use `speech_model: "universal-3-5-pro"` by default. 
 
 `domain: "medical-v1"` enables Medical Mode — an add-on that improves accuracy for medical terminology (medications, procedures, conditions, dosages). Works with both pre-recorded and streaming models.
 
-- **Pre-recorded:** Universal-3 Pro (`domain: "medical-v1"` in request body), Universal-2
+- **Pre-recorded:** Universal-3.5 Pro (`domain: "medical-v1"` in request body), Universal-2
 - **Streaming:** universal-3-5-pro, universal-streaming-english, universal-streaming-multilingual
 - **Supported languages:** English, Spanish, German, French (4 languages only)
 - Billed as a separate add-on. If used with an unsupported language, the API ignores `domain` and returns a warning — transcript still completes and you are NOT charged for Medical Mode.
@@ -179,7 +178,7 @@ See `references/llm-gateway.md` for models, tool calling, structured outputs, an
 | Hardcoding v2 streaming URL | v3 (`/v3/ws`) is current; v2 still works but is legacy |
 | Using `speech_model=u3-rt-pro` for streaming | **Removed July 2026** from the model picker and streaming spec enum — superseded by `universal-3-5-pro` (the streaming default). Set a different model only for cost tradeoffs (`universal-streaming-english`/`-multilingual`) |
 | Python SDK rejects `universal-3-5-pro` | Upgrade to `assemblyai>=0.64.21` for Streaming v3 SDK support. Older SDKs such as `0.64.4` validate `speech_model` against an enum that omits `universal-3-5-pro` |
-| `aai.SpeechModel.universal_3_pro` in Python SDK | Use raw strings: `"universal-3-pro"`, `"universal-2"` — these enum aliases don't exist in the SDK |
+| `aai.SpeechModel.universal_3_5_pro` in Python SDK | Use raw strings: `"universal-3-5-pro"`, `"universal-2"` — these enum aliases don't exist in the SDK |
 | S2S `session.update` without `"session"` key | Must wrap config: `{"type":"session.update","session":{...}}` |
 | S2S tool schema using `{"function":{...}}` nesting | S2S tools are flat: `{"type":"function","name":"...","description":"...","parameters":{...}}` |
 | Voice Agent S2S URL | Correct URL: `wss://agents.assemblyai.com/v1/ws` — not `/v1/voice` (renamed April 2026), `/v1/realtime` (older), or `speech-to-speech.us.assemblyai.com` (very old) |

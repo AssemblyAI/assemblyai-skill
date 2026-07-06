@@ -32,7 +32,7 @@ Submit an audio file for transcription. Send a JSON body with the parameters bel
 | Parameter | Type | Description |
 |---|---|---|
 | `audio_url` | string | **Required.** URL of the audio file to transcribe. Can be a public URL or an `upload_url` from the upload endpoint. |
-| `speech_models` | array | **Optional** (as of June 2026). Priority-ordered list of speech models to use (e.g., `["universal-3-5-pro", "universal-2"]`). First model is used if supported; falls back to next. If omitted, defaults to `["universal-3-pro", "universal-2"]`. Universal-3.5 Pro is accepted here (`["universal-3-5-pro"]`). |
+| `speech_models` | array | **Optional.** Priority-ordered list of speech models. First supported model is used; falls back to the next. **If omitted, defaults to `["universal-3-5-pro", "universal-2"]`.** The enum now accepts only `universal-3-5-pro` and `universal-2` — `universal-3-pro` was removed (superseded by `universal-3-5-pro`). The `speech_model_used` response field reports which model actually ran. |
 | `prompt` | string | For Universal-3.5 Pro, a contextual *description* of the audio (domain → scenario → full detail), **not** formatting/behavioral instructions (those are ignored). **Complementary with `keyterms_prompt`** — both can be set together. |
 | `keyterms_prompt` | array | List of key terms/phrases (strings) to boost recognition accuracy — up to **1000** terms for Universal-3.5 Pro, **200** for Universal-2, max **6 words per phrase**. **Complementary with `prompt`** — both can be set together. |
 | `language_code` | string | Language code (e.g., `"en_us"`, `"es"`, `"fr"`). Defaults to `"en_us"`. |
@@ -68,10 +68,10 @@ Submit an audio file for transcription. Send a JSON body with the parameters bel
 | `speech_understanding` | object | Enable Speech Understanding inline. Features nest under `speech_understanding.request` (the `request` wrapper is required): `translation`, `speaker_identification`, and/or `custom_formatting`. See `speech-understanding.md`. |
 | `speakers_expected` | integer | Hint for number of speakers (diarization). Deprecated in favor of `speaker_options`. |
 | `speaker_options` | object | Diarization options: `min_speakers_expected` (int, default 1), `max_speakers_expected` (int). |
-| `temperature` | float | 0–1. Controls randomness. Universal-3 Pro only. |
-| `domain` | string | Domain-specific model variant. `"medical-v1"` enables Medical Mode (EN, ES, DE, FR). Supported on Universal-3 Pro and Universal-2. |
-| `remove_audio_tags` | string | Remove inline annotations from the transcript. `"all"` removes all (audio event markers and speaker cues); `"speaker"` removes only speaker cues while keeping other annotations. Universal-3 Pro only. |
-| `language_codes` | array | List of language codes for code-switching (must include `"en"`). Universal-3 Pro only. |
+| `temperature` | float | 0–1. Controls randomness. Universal-3.5 Pro only. |
+| `domain` | string | Domain-specific model variant. `"medical-v1"` enables Medical Mode (EN, ES, DE, FR). Supported on Universal-3.5 Pro and Universal-2. |
+| `remove_audio_tags` | string | Remove inline annotations from the transcript. `"all"` removes all (audio event markers and speaker cues); `"speaker"` removes only speaker cues while keeping other annotations. Universal-3.5 Pro only. |
+| `language_codes` | array | List of language codes for code-switching (must include `"en"`). Universal-3.5 Pro only. |
 | `audio_start_from` | integer | Start transcription from this time offset, in **milliseconds**. |
 | `audio_end_at` | integer | End transcription at this time offset, in **milliseconds**. |
 | `speech_threshold` | float | Confidence threshold (0-1) for filtering low-confidence speech. Requires at least **30 seconds** of audio. |
@@ -105,7 +105,7 @@ The transcript response may include an optional `metadata` object with additiona
   "metadata": {
     "domain_used": null,
     "warnings": [
-      { "message": "'ja' is not supported in universal-3-pro — transcription is handled by universal-2. To silence this warning, set speech_models: [\"universal-3-pro\", \"universal-2\"]." }
+      { "message": "'ur' is not supported in universal-3-5-pro — transcription is handled by universal-2. To silence this warning, set speech_models: [\"universal-3-5-pro\", \"universal-2\"]." }
     ]
   }
 }

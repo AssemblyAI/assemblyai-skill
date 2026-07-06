@@ -47,7 +47,7 @@ Use `speech_models` to specify a preferred model with automatic fallback:
 
 ```python
 config = aai.TranscriptionConfig(
-    speech_models=["universal-3-pro", "universal-2"]
+    speech_models=["universal-3-5-pro", "universal-2"]
 )
 
 transcriber = aai.Transcriber(config=config)
