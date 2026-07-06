@@ -2,7 +2,9 @@
 
 ## Overview
 
-Speech Understanding provides post-transcription intelligence: **Translation, Speaker Identification, and Custom Formatting**. (Entity Detection, Sentiment Analysis, Key Phrases, and Topic Detection are *not* part of this object — they remain classic boolean transcript params; see `audio-intelligence.md`.)
+Speech Understanding provides post-transcription intelligence: **Translation, Speaker Identification, Custom Formatting, Summarization, and Action Items**. (Entity Detection, Sentiment Analysis, Key Phrases, and Topic Detection are *not* part of this object — they remain classic boolean transcript params; see `audio-intelligence.md`.)
+
+> **Summarization vs the deprecated `summarization`/`auto_chapters` params:** the top-level `summarization` and `auto_chapters` boolean params on `POST /v2/transcript` are **deprecated**. The modern replacements are the Speech Understanding `summarization` (chaptered summary with timestamps + headlines) and `action_items` features below — or the LLM Gateway for fully custom prompts.
 
 Two ways to run it:
 
@@ -180,6 +182,93 @@ The format params are **strings (format patterns), not booleans**:
 ### Response
 
 `speech_understanding.response.custom_formatting` contains `formatted_text`, `formatted_utterances` (only when `format_utterances: true`), and a `mapping` object (original → formatted).
+
+## Summarization
+
+Generates a chaptered summary of the transcript — each chapter has timestamps, a `text` summary, and a `headline`. Replaces the deprecated top-level `summarization`/`auto_chapters` params. **Open beta.** Models: `universal-3-5-pro`, `universal-2`. Regions: US & EU.
+
+### Parameters (`speech_understanding.request.summarization`)
+
+- `summary_type` (string, **required**): `"paragraph"` (longer, more detailed) or `"bullets"` (short, concise).
+- `effort` (string, default `"low"`): `"low"` or `"medium"`. `medium` spends more processing power for higher-quality summaries — use it for high-stakes meetings, multilingual audio, or very long audio (≈1.5h+). Default `low` is sufficient for most cases.
+
+### Example
+
+```json
+{
+  "audio_url": "https://example.com/audio.mp3",
+  "speech_understanding": {
+    "request": {
+      "summarization": { "summary_type": "paragraph", "effort": "low" }
+    }
+  }
+}
+```
+
+### Response
+
+`speech_understanding.response.summarization` → `{ status, summary_type, effort, summary: [{ start, end, text, headline }] }`:
+
+```json
+{
+  "speech_understanding": {
+    "response": {
+      "summarization": {
+        "status": "success",
+        "summary_type": "paragraph",
+        "effort": "low",
+        "summary": [
+          { "start": 240, "end": 37100, "text": "Smoke from hundreds of Canadian wildfires...", "headline": "Smoke from Canadian Wildfires Affects US Air Quality" }
+        ]
+      }
+    }
+  }
+}
+```
+
+## Action Items
+
+Extracts action items from the transcript, each with the source `quote` and a `timestamp`. **Open beta.** Models: `universal-3-5-pro`, `universal-2`. Regions: US & EU.
+
+### Parameters (`speech_understanding.request.action_items`)
+
+- `include_decisions` (boolean, default `false`): when `true`, also captures decisions made in the conversation as action items.
+- `effort` (string, default `"low"`): `"low"` or `"medium"` (see Summarization for guidance on `medium`).
+
+Pass an empty object (`"action_items": {}`) to use defaults.
+
+### Example
+
+```json
+{
+  "audio_url": "https://example.com/audio.mp3",
+  "speech_understanding": {
+    "request": {
+      "action_items": { "include_decisions": true }
+    }
+  }
+}
+```
+
+### Response
+
+`speech_understanding.response.action_items` → `{ status, effort, items: [{ action_item, quote, timestamp }] }`:
+
+```json
+{
+  "speech_understanding": {
+    "response": {
+      "action_items": {
+        "status": "success",
+        "effort": "low",
+        "items": [
+          { "action_item": "Observe the expansion and contraction of the Arctic ice cap throughout the seasons.", "quote": "The Arctic ice cap ... expands in winter and contracts in summer.", "timestamp": 9520 }
+        ]
+      }
+    }
+  }
+}
+```
 
 ## Post-hoc via the Understanding Endpoint
 
