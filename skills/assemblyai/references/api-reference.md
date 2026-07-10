@@ -286,6 +286,16 @@ Full list of supported PII policy values for `redact_pii_policies`:
 
 `account_number`, `banking_information`, `blood_type`, `credit_card_cvv`, `credit_card_expiration`, `credit_card_number`, `date`, `date_interval`, `date_of_birth`, `drivers_license`, `drug`, `duration`, `email_address`, `event`, `filename`, `gender`, `gender_sexuality`, `healthcare_number`, `injury`, `ip_address`, `language`, `location`, `location_address`, `location_address_street`, `location_city`, `location_coordinate`, `location_country`, `location_state`, `location_zip`, `marital_status`, `medical_condition`, `medical_process`, `money_amount`, `nationality`, `number_sequence`, `occupation`, `organization`, `organization_medical_facility`, `passport_number`, `password`, `person_age`, `person_name`, `phone_number`, `physical_attribute`, `political_affiliation`, `religion`, `sexuality`, `statistics`, `time`, `url`, `us_social_security_number`, `username`, `vehicle_id`, `zodiac_sign`
 
+### Granular `location_*` policies (matching is shape-dependent)
+
+The `location_*` subtypes let you redact specific parts of a location while leaving others visible — but **which policy matches a span depends on the span's shape**, which is a common source of "why wasn't this redacted" mistakes:
+
+- A **full contiguous mailing address** (street + city + state + ZIP together, e.g. `145 Windsor St., Toronto, ON M5A 2P5`) is one `location_address` span — redact it with `location_address`.
+- A **standalone fragment** is tagged as its specific subtype: a lone street → `location_address_street`, a lone city → `location_city`, a lone state → `location_state`, a lone country → `location_country`, a lone ZIP → `location_zip`, coordinates → `location_coordinate`.
+- A **combined phrase that mixes parts without forming a full address** — e.g. `Toronto, Canada` — is a single generic `location` span. The granular subtypes alone will **not** match it; you must include the broad `location` policy. (So adding only `location_city` expecting `Toronto, Canada` to be redacted will silently fail.)
+
+These subtypes apply to **PII redaction only**. [Entity Detection](https://www.assemblyai.com/docs/speech-understanding/entity-detection) returns every location under the single `location` entity type — never as `location_city`, `location_zip`, etc.
+
 ---
 
 ## 14. Data Retention & Compliance

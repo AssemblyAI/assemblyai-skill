@@ -142,6 +142,25 @@ By default a voice agent uses AssemblyAI's **managed** conversational model. To 
 
 `session.tools` updates **replace** the previous array (not merge). Pattern: progressive tool reveal — start with minimal tools, add the next phase's tools after each successful `tool.result`.
 
+### Parameter hints for spoken input (`pattern` / `examples`)
+
+A parameter's JSON Schema `pattern` (Python regex, matched against the **whole** value — no `^`/`$` needed; escape as `\\d` in JSON) and `examples` describe the value **the agent produces from speech**, not the words the caller says. The agent's cleanup of spoken input is **best-effort, not guaranteed**: it is reliable for well-known shapes (phone numbers, emails, dates), but **long digit sequences** (card numbers, account numbers, claim IDs) often arrive **as spoken** — with interior spaces when the caller reads digits one at a time (`"4 2 4 2 …"`, `"4242 4242 4242 4242"`), or with digits missing if recognition dropped some.
+
+**The trap (#1 cause of re-ask loops):** a `pattern` written only for the tidy form (`^\\d{16}$`) rejects the spaced form, so the agent silently re-asks — the caller just hears "I didn't catch that" on repeat. Instead, allow interior spaces, bound the **digit** count (not character count), and include a spaced `example`, then strip non-digits in your handler:
+
+```json
+{
+  "card_number": {
+    "type": "string",
+    "description": "The card number as spoken. May contain spaces between digits; 13–19 digits once spaces are removed.",
+    "pattern": " *([0-9] *){13,19}",
+    "examples": ["4242424242424242", "4242 4242 4242 4242", "4 2 4 2 4 2 4 2 4 2 4 2 4 2 4 2"]
+  }
+}
+```
+
+This tolerates a **complete** number spoken with spaces; it should not (and does not) accept a genuinely incomplete one — a partial capture is correctly rejected and re-asked. Keep the `pattern` as a shape hint that admits real spoken input; do length/checksum validation in your handler.
+
 ### Mutability After `session.ready`
 
 | Field | Mutable? |

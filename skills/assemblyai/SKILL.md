@@ -161,6 +161,7 @@ See `references/llm-gateway.md` for models, tool calling, structured outputs, an
 | Voice Agent HTTP tool `headers` | Server-side HTTP tools take `headers` as a **list of `{name, value}` entries** (since June 2026), NOT a `{name: value}` dict. Reads return `{name, last_set_at}` only — values are write-only and never returned (not masked as `"***"`) |
 | Voice Agent BYO LLM (`llm`) | Set `llm` on a **stored agent** (REST create/update, not `session.update`) to run on your own OpenAI-compatible endpoint: `[{base_url, model, api_key}]` — one entry only, must stream, `api_key` write-only. `"llm": []` reverts to the managed model. Point `base_url` at the LLM Gateway to use a frontier model on your AssemblyAI account |
 | Voice Agent webhooks | Subscribe to Voice Agent events via `POST https://agents.assemblyai.com/v1/webhook-subscriptions` (events: `session.started`/`session.completed`/`call.connected`/`call.ended`/`call.failed`; scope with `agent_id` or omit for account-wide). See `references/api-reference.md` |
+| Voice Agent tool `pattern` on spoken digits | A tool parameter's `pattern` is matched against the value **as the agent produces it from speech**, and cleanup is best-effort. Long digit sequences (card/account numbers) often arrive with interior spaces (`"4 2 4 2 …"`), so a strict `^\d{16}$` rejects them and traps the caller in a re-ask loop. Allow interior spaces, bound the **digit** count, add a spaced `example`, and strip non-digits in your handler. See `references/voice-agents.md` |
 
 ## Common Mistakes
 
