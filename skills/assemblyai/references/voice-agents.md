@@ -92,7 +92,7 @@ Sessions are preserved for **30 seconds** after disconnection. Reconnect using `
       }
     },
     "output": {
-      "voice": "ivy",
+      "voice": "anna",
       "format": { "encoding": "audio/pcm" },
       "volume": 100
     },
@@ -141,6 +141,25 @@ By default a voice agent uses AssemblyAI's **managed** conversational model. To 
 | `timeout_seconds` | number | `120` | 1–300. On timeout the agent apologises; the session continues |
 
 `session.tools` updates **replace** the previous array (not merge). Pattern: progressive tool reveal — start with minimal tools, add the next phase's tools after each successful `tool.result`.
+
+### Parameter hints for spoken input (`pattern` / `examples`)
+
+A parameter's JSON Schema `pattern` (Python regex, matched against the **whole** value — no `^`/`$` needed; escape as `\\d` in JSON) and `examples` describe the value **the agent produces from speech**, not the words the caller says. The agent's cleanup of spoken input is **best-effort, not guaranteed**: it is reliable for well-known shapes (phone numbers, emails, dates), but **long digit sequences** (card numbers, account numbers, claim IDs) often arrive **as spoken** — with interior spaces when the caller reads digits one at a time (`"4 2 4 2 …"`, `"4242 4242 4242 4242"`), or with digits missing if recognition dropped some.
+
+**The trap (#1 cause of re-ask loops):** a `pattern` written only for the tidy form (`^\\d{16}$`) rejects the spaced form, so the agent silently re-asks — the caller just hears "I didn't catch that" on repeat. Instead, allow interior spaces, bound the **digit** count (not character count), and include a spaced `example`, then strip non-digits in your handler:
+
+```json
+{
+  "card_number": {
+    "type": "string",
+    "description": "The card number as spoken. May contain spaces between digits; 13–19 digits once spaces are removed.",
+    "pattern": " *([0-9] *){13,19}",
+    "examples": ["4242424242424242", "4242 4242 4242 4242", "4 2 4 2 4 2 4 2 4 2 4 2 4 2 4 2"]
+  }
+}
+```
+
+This tolerates a **complete** number spoken with spaces; it should not (and does not) accept a genuinely incomplete one — a partial capture is correctly rejected and re-asked. Keep the `pattern` as a shape hint that admits real spoken input; do length/checksum validation in your handler.
 
 ### Mutability After `session.ready`
 
@@ -245,20 +264,24 @@ For browser apps, enable echo cancellation via `getUserMedia({ audio: { echoCanc
 
 ### Available Voices
 
-Set a voice via `session.output.voice` in `session.update` **before `session.ready`**. `output.voice` and `output.format` are immutable once the session is established — the voice **cannot be changed mid-conversation**. (`output.volume` is the exception — it remains mutable.) Default is `ivy`.
+Set a voice via `session.output.voice` in `session.update` **before `session.ready`** — over the WebSocket `output.voice` is a **plain string** (e.g. `"anna"`). `output.voice` and `output.format` are immutable once the session is established — the voice **cannot be changed mid-conversation**. (`output.volume` is the exception — it remains mutable.) On the **stored-agent REST API** the same choice is instead an **object**: `"voice": {"voice_id": "anna"}`. The default is `ivy`, which is now **deprecated** — set a current voice explicitly.
 
-**Every voice speaks all output languages** — 🇺🇸 English, French, German, Italian, Portuguese, Spanish, Hindi, Mandarin, Russian, Korean, and Japanese. The two groups below differ only by the voice's *primary accent*, not which languages it can speak. Officially supported **output** languages (those with at least one native/primary-accent voice) are English, French, Italian, Spanish, Hindi, and Russian; German, Portuguese, Turkish, Dutch, and Swedish are on the roadmap. **Input** recognition uses Universal-3.5 Pro Streaming and covers **18 languages** with native code-switching (en, es, de, fr, pt, it, tr, nl, sv, no, da, fi, hi, vi, ar, he, ja, zh) — an agent can speak an output language it can't transcribe (useful for translation-style flows).
+The voice roster was refreshed in **July 2026**. Prefer the current roster below; the older names still work but are **deprecated and will be removed in a future release** — migrate when convenient.
 
-**American-English accent** (carried into other languages):
-`ivy`, `james`, `tyler`, `winter`, `bella`, `david`, `kyle`, `helen`, `martha`, `river`, `emma`, `victor`, `eleanor`
+**Every voice speaks all supported output languages** — the two current groups below differ only by the voice's *primary accent*, not which languages it can speak. Officially supported **output** languages (each backed by ≥1 native/primary-accent voice) are **English, Italian, Spanish, German, Portuguese, and French** (6); Hindi and others are [on the roadmap](https://www.assemblyai.com/docs/voice-agents/voice-agent-api/supported-languages). **Input** recognition uses Universal-3.5 Pro Streaming and covers **18 languages** with native code-switching (en, es, de, fr, pt, it, tr, nl, sv, no, da, fi, hi, vi, ar, he, ja, zh) — an agent can speak an output language it can't transcribe (useful for translation-style flows).
 
-**Native non-English accent** (code-switches with English):
-`arjun` (Hindi/Hinglish), `dmitri` (Russian), `pierre` (French), `giulia`/`luca` (Italian), `lucia`/`mateo` (Spanish), `diego` (Latin American / Colombian Spanish)
+**Current — English** (🇺🇸 American accent unless noted):
+`alba`, `anna`, `charles`, `eve`, `george`, `jane`, `jean`, `mary`, `michael`; `paul`, `vera` (🇬🇧 British)
 
-**Removed June 2026** (now rejected at `session.update`): `sam`, `mia`, `jack` (US); `sophie`, `oliver` (UK — no UK voices remain); `ethan`, `mei` (Mandarin); `lukas`, `lena` (German); `mina`, `joon` (Korean); `ren`, `hana` (Japanese). Any name not in the lists above (including older names like `autumn`, `claire`, `dawn`, `josh`, `grace`, `pete`) silently fails — call `GET https://agents.assemblyai.com/v1/voices` for the authoritative live list.
+**Current — language-specific** (native accent, code-switches with English):
+`giovanni` (🇮🇹 Italian), `lola` (🇪🇸 Spanish), `juergen` (🇩🇪 German), `rafael` (🇵🇹 Portuguese), `estelle` (🇫🇷 French)
+
+**Deprecated** (still functional; migrate off): `ivy` (the current default), `james`, `tyler`, `winter`, `bella`, `david`, `kyle`, `helen`, `martha`, `river`, `emma`, `victor`, `eleanor` (US); `arjun` (Hindi/Hinglish), `dmitri` (Russian), `pierre` (French), `giulia`/`luca` (Italian), `lucia`/`mateo` (Spanish), `diego` (Colombian Spanish)
+
+**Removed June 2026** (now rejected at `session.update`): `sam`, `mia`, `jack` (US); `sophie`, `oliver` (UK); `ethan`, `mei` (Mandarin); `lukas`, `lena` (German); `mina`, `joon` (Korean); `ren`, `hana` (Japanese). Any name not in the current or deprecated lists above (including older names like `autumn`, `claire`, `dawn`, `josh`, `grace`, `pete`) silently fails — call `GET https://agents.assemblyai.com/v1/voices` for the authoritative live list.
 
 ```json
-{"type": "session.update", "session": {"output": {"voice": "ivy"}}}
+{"type": "session.update", "session": {"output": {"voice": "anna"}}}
 ```
 
 ### Voice Agent Error Codes

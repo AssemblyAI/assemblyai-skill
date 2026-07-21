@@ -35,12 +35,12 @@ Submit an audio file for transcription. Send a JSON body with the parameters bel
 | `speech_models` | array | **Optional.** Priority-ordered list of speech models. First supported model is used; falls back to the next. **If omitted, defaults to `["universal-3-5-pro", "universal-2"]`.** The enum now accepts only `universal-3-5-pro` and `universal-2` — `universal-3-pro` was removed (superseded by `universal-3-5-pro`). The `speech_model_used` response field reports which model actually ran. |
 | `prompt` | string | For Universal-3.5 Pro, a contextual *description* of the audio (domain → scenario → full detail), **not** formatting/behavioral instructions (those are ignored). **Complementary with `keyterms_prompt`** — both can be set together. |
 | `keyterms_prompt` | array | List of key terms/phrases (strings) to boost recognition accuracy — up to **1000** terms for Universal-3.5 Pro, **200** for Universal-2, max **6 words per phrase**. **Complementary with `prompt`** — both can be set together. |
-| `language_code` | string | Language code (e.g., `"en_us"`, `"es"`, `"fr"`). Defaults to `"en_us"`. |
-| `language_detection` | boolean | Enable automatic language detection. Default `false`. |
+| `language_code` | string | Language code (e.g., `"en_us"`, `"es"`, `"fr"`). **No fixed default** — if you don't specify a language, it's detected automatically. **Cannot be used together with `language_detection`** (mutually exclusive). |
+| `language_detection` | boolean | Enable automatic language detection. **Applied automatically when you omit `language_code`.** Set to `false` only *together with* a `language_code`; disabling it without specifying a language returns an error. |
 | `language_detection_options` | object | Options for language detection: `expected_languages` (array of language codes), `fallback_language` (string), `code_switching` (boolean, Universal-2 only), `code_switching_confidence_threshold` (float, default 0.3). |
-| `language_confidence_threshold` | float | Minimum confidence threshold for language detection (0-1). |
-| `speaker_labels` | boolean | Enable speaker diarization. Default `false`. |
-| `sentiment_analysis` | boolean | Enable sentiment analysis on each sentence. Default `false`. |
+| `language_confidence_threshold` | float | Minimum confidence threshold for language detection (0-1), defaults to `0`. **Can only be set when `language_detection` is enabled.** |
+| `speaker_labels` | boolean | Enable speaker diarization. Default `false`. **Requires `punctuate: true`** (default). |
+| `sentiment_analysis` | boolean | Enable sentiment analysis on each sentence. Default `false`. **Requires `punctuate: true`** (default). |
 | `entity_detection` | boolean | Enable entity detection. Default `false`. |
 | `auto_chapters` | boolean | **Deprecated.** Use Speech Understanding `summarization` (chaptered summary; see `speech-understanding.md`) or the LLM Gateway instead. |
 | `iab_categories` | boolean | Enable IAB content category detection. Default `false`. |
@@ -49,14 +49,14 @@ Submit an audio file for transcription. Send a JSON body with the parameters bel
 | `summarization` | boolean | **Deprecated.** Use Speech Understanding `summarization`/`action_items` (see `speech-understanding.md`) or the LLM Gateway instead. |
 | `summary_model` | string | **Deprecated.** Model for summarization. |
 | `summary_type` | string | **Deprecated.** Type of summary. |
-| `redact_pii` | boolean | Enable PII redaction. Default `false`. |
+| `redact_pii` | boolean | Enable PII redaction. Default `false`. **Requires `format_text: true`** (default). |
 | `redact_pii_policies` | array | List of PII policies to redact (see PII Policies section). |
 | `redact_pii_sub` | string | Substitution type: `"hash"` (default) or `"entity_name"`. |
 | `redact_pii_audio` | boolean | Generate a redacted audio file. Default `false`. |
 | `redact_pii_audio_quality` | string | Quality of redacted audio: `"mp3"` or `"wav"`. |
 | `redact_pii_audio_options` | object | `override_audio_redaction_method: "silence"` replaces PII with silence instead of default beep. `return_redacted_no_speech_audio: true` also redacts non-speech segments. |
 | `redact_pii_return_unredacted` | boolean | When `true`, returns the original unredacted transcript alongside the redacted one in a single request. Response then includes `unredacted_text`, `unredacted_words`, and `unredacted_utterances`. Default `false`. |
-| `redact_static_entities` | object | Literal find-and-replace redaction layered on top of standard PII redaction. Maps a custom label to a list of exact terms, e.g. `{"INTERNAL_TOOL": ["Bearclaw", "Cubclaw"]}`. Requires `redact_pii: true` (else 400); matched terms are also redacted in audio when `redact_pii_audio` is on. |
+| `redact_static_entities` | object | Literal find-and-replace redaction layered on top of standard PII redaction. Maps a custom label to a list of exact terms, e.g. `{"INTERNAL_TOOL": ["Bearclaw", "Cubclaw"]}`. Requires `redact_pii: true` (else 400); matched terms are also redacted in audio when `redact_pii_audio` is on. **Limits:** up to 100 labels, each with up to 200 terms of ≤200 chars; a label may contain only letters, numbers, spaces, underscores, and hyphens (≤80 chars). |
 | `filter_profanity` | boolean | Filter profanity from transcript text. Default `false`. |
 | `disfluencies` | boolean | Include disfluencies (um, uh, etc.) in transcript. Default `false`. |
 | `multichannel` | boolean | Enable multichannel transcription. Default `false`. |
@@ -66,11 +66,11 @@ Submit an audio file for transcription. Send a JSON body with the parameters bel
 | `webhook_auth_header_value` | string | Custom header value for webhook authentication. |
 | `auto_highlights` | boolean | Enable key phrase detection. Default `false`. |
 | `speech_understanding` | object | Enable Speech Understanding inline. Features nest under `speech_understanding.request` (the `request` wrapper is required): `translation`, `speaker_identification`, and/or `custom_formatting`. See `speech-understanding.md`. |
-| `speakers_expected` | integer | Hint for number of speakers (diarization). Deprecated in favor of `speaker_options`. |
-| `speaker_options` | object | Diarization options: `min_speakers_expected` (int, default 1), `max_speakers_expected` (int). |
-| `temperature` | float | 0–1. Controls randomness. Universal-3.5 Pro only. |
-| `domain` | string | Domain-specific model variant. `"medical-v1"` enables Medical Mode (EN, ES, DE, FR). Supported on Universal-3.5 Pro and Universal-2. |
-| `remove_audio_tags` | string | Remove inline annotations from the transcript. `"all"` removes all (audio event markers and speaker cues); `"speaker"` removes only speaker cues while keeping other annotations. Universal-3.5 Pro only. |
+| `speakers_expected` | integer | Hint for number of speakers (diarization). Positive integer. **Requires `speaker_labels: true`** and **cannot be used together with `speaker_options`.** Deprecated in favor of `speaker_options`. |
+| `speaker_options` | object | Diarization options: `min_speakers_expected` (int, default 1), `max_speakers_expected` (int; when both set, min ≤ max). **Requires `speaker_labels: true`** and **cannot be used together with `speakers_expected`.** |
+| `temperature` | float | 0–1. Controls randomness. Only takes effect on Universal-3.5 Pro. |
+| `domain` | string | Domain-specific model variant. Enum: `"medical-v1"` (enables Medical Mode; EN, ES, DE, FR) or `null`. Supported on Universal-3.5 Pro and Universal-2. |
+| `remove_audio_tags` | string | Remove Universal-3.5 Pro's inline annotations (audio event markers, speaker cues). Enum `"all"` / `"speaker"` / `null`. **Defaults to `"all"` — all inline annotations are removed by default.** `"speaker"` removes only speaker cues while keeping other annotations; pass `null` to keep all annotations. Only takes effect on Universal-3.5 Pro. |
 | `language_codes` | array | List of language codes for code-switching (must include `"en"`). Universal-3.5 Pro only. |
 | `audio_start_from` | integer | Start transcription from this time offset, in **milliseconds**. |
 | `audio_end_at` | integer | End transcription at this time offset, in **milliseconds**. |
@@ -195,6 +195,10 @@ If your firewall requires IP allowlisting:
 
 Use `webhook_auth_header_name` and `webhook_auth_header_value` in the transcript request to include a custom authentication header on webhook requests.
 
+- `webhook_auth_header_name` — 1–1000 chars, ASCII letters, numbers, hyphens, and underscores only.
+- `webhook_auth_header_value` — 1–1000 chars, no carriage returns or newlines.
+- Both fields require **each other** *and* `webhook_url` to also be set.
+
 ### Metadata via Query Parameters
 
 You can append metadata as query parameters on the `webhook_url` (e.g., `https://example.com/hook?user_id=123&job_id=abc`). These are passed through on the webhook POST.
@@ -258,7 +262,11 @@ Set `code_switching: true` inside `language_detection_options`, along with an op
 
 ## 12. Language Detection
 
-Set `language_detection: true` to automatically detect the spoken language.
+Automatic language detection identifies the spoken language and routes the request to the best model. **It runs automatically whenever you omit `language_code`** — you no longer have to set `language_detection: true` explicitly, and there is no implicit `en_us` default.
+
+- `language_code` and `language_detection` are **mutually exclusive.** Provide a `language_code` to force a language, *or* omit it to auto-detect — never both.
+- To force a specific language and skip detection, set only `language_code`. Setting `language_detection: false` **without** a `language_code` returns an error.
+- `language_confidence_threshold` can only be set when detection is active.
 
 ### Options
 
@@ -285,6 +293,16 @@ Use `language_detection_options` to refine detection:
 Full list of supported PII policy values for `redact_pii_policies`:
 
 `account_number`, `banking_information`, `blood_type`, `credit_card_cvv`, `credit_card_expiration`, `credit_card_number`, `date`, `date_interval`, `date_of_birth`, `drivers_license`, `drug`, `duration`, `email_address`, `event`, `filename`, `gender`, `gender_sexuality`, `healthcare_number`, `injury`, `ip_address`, `language`, `location`, `location_address`, `location_address_street`, `location_city`, `location_coordinate`, `location_country`, `location_state`, `location_zip`, `marital_status`, `medical_condition`, `medical_process`, `money_amount`, `nationality`, `number_sequence`, `occupation`, `organization`, `organization_medical_facility`, `passport_number`, `password`, `person_age`, `person_name`, `phone_number`, `physical_attribute`, `political_affiliation`, `religion`, `sexuality`, `statistics`, `time`, `url`, `us_social_security_number`, `username`, `vehicle_id`, `zodiac_sign`
+
+### Granular `location_*` policies (matching is shape-dependent)
+
+The `location_*` subtypes let you redact specific parts of a location while leaving others visible — but **which policy matches a span depends on the span's shape**, which is a common source of "why wasn't this redacted" mistakes:
+
+- A **full contiguous mailing address** (street + city + state + ZIP together, e.g. `145 Windsor St., Toronto, ON M5A 2P5`) is one `location_address` span — redact it with `location_address`.
+- A **standalone fragment** is tagged as its specific subtype: a lone street → `location_address_street`, a lone city → `location_city`, a lone state → `location_state`, a lone country → `location_country`, a lone ZIP → `location_zip`, coordinates → `location_coordinate`.
+- A **combined phrase that mixes parts without forming a full address** — e.g. `Toronto, Canada` — is a single generic `location` span. The granular subtypes alone will **not** match it; you must include the broad `location` policy. (So adding only `location_city` expecting `Toronto, Canada` to be redacted will silently fail.)
+
+These subtypes apply to **PII redaction only**. [Entity Detection](https://www.assemblyai.com/docs/speech-understanding/entity-detection) returns every location under the single `location` entity type — never as `location_city`, `location_zip`, etc.
 
 ---
 
@@ -403,14 +421,15 @@ POST https://sync.assemblyai.com/transcribe
 
 | Field | Type | Notes |
 |-------|------|-------|
-| `prompt` | string | Custom instruction prepended to the model's system prompt. Max **4096** chars. Default applied when omitted. |
-| `word_boost` | string[] | Keyterms that bias the decoder. Max **2048** chars total across all terms. (This is the documented keyterms param for Sync — *not* `keyterms_prompt`.) |
+| `prompt` | string | A contextual **description** of the audio (domain → scenario → full detail), prepended to the model's default prompt — same framing as async/streaming, **not** formatting/behavioral instructions. Max **4096** chars. A managed default is applied when omitted. |
+| `keyterms_prompt` | string[] | Keyterms that bias the decoder toward specific tokens. Max **2048** chars total across all terms. This is the documented keyterms param for Sync. **Also accepted as `keyterms` or `word_boost` — provide only one of the three.** |
 | `conversation_context` | string \| string[] | Prior turns from the same conversation in chronological order (oldest first, most recent last). Supplies the preceding dialogue as context for greater continuity across a multi-turn conversation (e.g. a user talking with a voice agent). A single string is treated as one turn. Oldest turns dropped first when over the context-window limit. |
 | `language_code` | string \| string[] | Language of the audio as an ISO 639-1 code, or a list for multilingual audio. Steers the default transcription prompt toward the named language(s). **Ignored when a custom `prompt` is set.** Default `en`. One of: en, es, de, fr, it, pt, tr, nl, sv, no, da, fi, hi, vi, ar, he, ja, ur, zh. |
+| `timestamps` | boolean | Whether to compute per-word `start`/`end` timestamps. **Default `false`** — no timestamps are computed and `start`/`end` are omitted from each `words` object. Set `true` for exact per-word timings (extra latency; words that can't be aligned still omit them; accuracy best for English). |
 | `sample_rate` | integer | Required for `audio/pcm`. One of 8000, 16000, 22050, 24000, 32000, 44100, 48000. WAV reads it from the header. |
 | `channels` | integer | Required for `audio/pcm`. `1` or `2` (stereo down-mixed to mono internally). |
 
-`prompt` and `word_boost` can both be set in the same `config` part.
+`prompt` and `keyterms_prompt` can both be set in the same `config` part.
 
 ### Response
 
@@ -418,7 +437,7 @@ POST https://sync.assemblyai.com/transcribe
 {
   "text": "Hi, I'm calling about my Best Buy order...",
   "words": [
-    { "text": "Hi",  "start": 0,   "end": 200, "confidence": 0.91 }
+    { "text": "Hi", "confidence": 0.91, "start": 0, "end": 200 }
   ],
   "confidence": 0.87,
   "audio_duration_ms": 101567,
@@ -426,7 +445,7 @@ POST https://sync.assemblyai.com/transcribe
 }
 ```
 
-Word timestamps use the fields `start` / `end` (integer **milliseconds**) — same field names as the async API. Note the clip-level `audio_duration_ms` does carry the `_ms` suffix. Include `session_id` in support requests.
+**Per-word `start`/`end` timestamps are opt-in.** By default (`config.timestamps` unset or `false`) they are **omitted** from each `words` object, which carries only `text` + `confidence`. Set `config.timestamps: true` to get integer-**millisecond** `start`/`end` (same field names as the async API; words that couldn't be aligned still omit them). The clip-level `audio_duration_ms` always carries the `_ms` suffix. Include `session_id` in support requests.
 
 ### Audio Requirements
 
@@ -463,10 +482,23 @@ curl -X POST https://sync.assemblyai.com/transcribe \
   -H 'Authorization: YOUR_API_KEY' \
   -H 'X-AAI-Model: universal-3-5-pro' \
   -F 'audio=@sample.wav;type=audio/wav' \
-  -F 'config={"prompt":"Transcribe verbatim.","word_boost":["AssemblyAI"]};type=application/json'
+  -F 'config={"prompt":"Best Buy order-status support call.","keyterms_prompt":["AssemblyAI"],"timestamps":true};type=application/json'
 ```
 
 When to use: short pre-recorded clips needing an immediate response (voice messages, short call recordings, externally-segmented voice-agent utterances). For audio > 120s use the async REST API; for live mic audio use Streaming.
+
+### Connection Pre-Warming (`GET /warm`)
+
+**`GET https://sync.assemblyai.com/warm`** establishes the HTTPS connection (DNS + TCP + TLS handshake) *ahead* of a `/transcribe` request so the transcription call starts uploading audio immediately instead of paying for connection setup first.
+
+- **Unauthenticated**, idempotent, and safe to call repeatedly — the response body carries no information; the value is the open connection left in your client's pool.
+- **Required header:** `X-AAI-Model` (use the **same value** as your `/transcribe` request, e.g. `universal-3-5-pro`, so the warmed connection matches the routing path).
+- The warmed connection is reused **only** when `/transcribe` goes through the **same HTTP client (connection pool)** and the **same base URL**. Idle connections are evicted after a few seconds to minutes, so warm **right before** transcribing (typically the moment recording starts), not at startup.
+
+```bash
+curl -s https://sync.assemblyai.com/warm -H 'X-AAI-Model: universal-3-5-pro'
+# then POST /transcribe on the same client/session to reuse the warmed connection
+```
 
 ## 17. Voice Agents REST API (Stored Agents)
 
@@ -483,13 +515,13 @@ A REST API for creating **reusable** voice agents. An agent stores its `system_p
 | `PUT /v1/agents/{agent_id}` | Update an agent. Every field optional — send only what you want to change. |
 | `DELETE /v1/agents/{agent_id}` | Delete an agent. Returns `204`, no body. |
 
-**Create body** (`application/json`): required `name`, `system_prompt`, `voice`; optional `greeting`, `input`, `output`, `tools`, `llm`. Note `voice` is a **top-level** field here (in the WebSocket `session.update` it lives under `output.voice`). `greeting` is spoken straight to TTS on connect — omit it to have the agent listen first.
+**Create body** (`application/json`): required `name`, `system_prompt`, `voice`; optional `greeting`, `input`, `output`, `tools`, `llm`. Note `voice` is a **top-level** field here and takes an **object** — `{"voice_id": "<id>"}`, **not** a bare string (in the WebSocket `session.update` `output.voice` *is* a plain string). Pick a current voice id — see the voice roster in `references/voice-agents.md` (`ivy` and the older names are deprecated). `greeting` is spoken straight to TTS on connect — omit it to have the agent listen first.
 
 ```bash
 curl -X POST https://agents.assemblyai.com/v1/agents \
   -H 'Authorization: YOUR_API_KEY' \
   -H 'Content-Type: application/json' \
-  -d '{"name":"Support Bot","system_prompt":"You are a concise support agent.","voice":"ivy","greeting":"Hi, how can I help?"}'
+  -d '{"name":"Support Bot","system_prompt":"You are a concise support agent.","voice":{"voice_id":"anna"},"greeting":"Hi, how can I help?"}'
 ```
 
 ### Server-side HTTP tools (`headers` shape)
@@ -531,3 +563,17 @@ A REST API (base URL `https://agents.assemblyai.com`, same auth) to subscribe UR
 
 - **Events:** `session.started`, `session.completed`, `call.connected`, `call.ended`, `call.failed`.
 - **Body fields:** `url` (`https` + public host, required), `events` (array, required), `secret` (32–256 printable ASCII chars, no whitespace — signing secret, **write-only**, only its `secret_version` is returned), `agent_id` (optional; omit for account-wide).
+
+## 19. Voice Agent Sessions API (Recordings & Transcripts)
+
+A REST API (base URL `https://agents.assemblyai.com`, same auth) to list, retrieve, and delete Voice Agent **sessions** and download each session's artifacts (recording, conversation timeline, metadata).
+
+| Method & Path | Description |
+|---------------|-------------|
+| `GET /v1/sessions` | List sessions, newest first. Query params: `limit` (1–200, default 50), `cursor` (from the previous response's `response_metadata.next_cursor`), `status`, `agent_id`. |
+| `GET /v1/sessions/{session_id}` | Retrieve one session, including its artifacts as short-lived **pre-signed download URLs**. |
+| `DELETE /v1/sessions/{session_id}` | Soft-delete a session. Returns `204`, no body. |
+
+**Session record fields:** `id` (`sess_...`), `agent_id` (null when no stored agent was used), `status` (e.g. `completed`), `public_close_reason`, `duration_seconds` (null while active), `config` (session config captured at start), `created_at`, `ended_at`, and `artifacts` (empty until the session completes).
+
+**Artifacts** (`artifacts[]`): each has `type` (`audio` | `timeline` | `metadata`), `url` (pre-signed, short TTL — re-fetch the session for a fresh link), and `content_type` (e.g. `audio/ogg`). The `timeline` artifact holds the conversation turns and config changes; guard for missing keys (`turns`/`config_changes` are omitted when empty).
