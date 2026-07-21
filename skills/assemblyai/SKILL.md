@@ -105,9 +105,9 @@ A separate synchronous endpoint for short clips — send audio in one HTTP reque
 - **Required header:** `X-AAI-Model` — the current quickstart uses `universal-3-5-pro`; `u3-sync-pro` (Universal-3 Pro) is also accepted (the value in the formal spec enum)
 - **Auth:** `Authorization: YOUR_API_KEY` (Bearer prefix optional here, unlike the async REST API; or pass `?token=YOUR_API_KEY`)
 - **Body:** `multipart/form-data` with an `audio` part (`Content-Type: audio/wav` or `audio/pcm`) and an optional `config` JSON part
-- **`config` fields:** `prompt` (≤4096 chars), `word_boost` (string[], ≤2048 chars total — this is the documented keyterms param for Sync, *not* `keyterms_prompt`), `conversation_context` (string or string[] — prior conversation turns oldest-first, for continuity across a multi-turn conversation; oldest dropped when over the context budget), `language_code` (ISO 639-1 string or list, default `en` — steers the default prompt toward the named language(s); **ignored when a custom `prompt` is set**), and for `audio/pcm` also `sample_rate` + `channels` (required for raw PCM; WAV reads them from its header)
+- **`config` fields:** `prompt` (≤4096 chars — a contextual *description* of the audio, same framing as async/streaming), `keyterms_prompt` (string[], ≤2048 chars total — the documented keyterms param for Sync; **also accepted as `keyterms` or `word_boost`, provide only one of the three**), `conversation_context` (string or string[] — prior conversation turns oldest-first, for continuity across a multi-turn conversation; oldest dropped when over the context budget), `language_code` (ISO 639-1 string or list, default `en` — steers the default prompt toward the named language(s); **ignored when a custom `prompt` is set**), `timestamps` (boolean, default `false` — see Response below), and for `audio/pcm` also `sample_rate` + `channels` (required for raw PCM; WAV reads them from its header)
 - **Audio limits:** 80ms–120s, ≤40MB, 16-bit only, mono/stereo (stereo down-mixed), sample rates 8000/16000/22050/24000/32000/44100/48000 Hz
-- **Response:** `{ text, words[{text, start, end, confidence}], confidence, audio_duration_ms, session_id }` — word timestamps use `start`/`end` (integer milliseconds), same field names as the async API; only the clip-level `audio_duration_ms` carries the `_ms` suffix
+- **Response:** `{ text, words[{text, confidence, start?, end?}], confidence, audio_duration_ms, session_id }`. **Per-word `start`/`end` timestamps are opt-in — set `config.timestamps: true`.** With the default (`false`), no timestamps are computed and `start`/`end` are omitted from each word. When enabled they are integer milliseconds (same field names as async); words that can't be aligned still omit them. Only the clip-level `audio_duration_ms` carries the `_ms` suffix
 - **30s per-request deadline** (504 `inference_timeout`). For audio >120s use the async REST API; for live mic audio use Streaming.
 
 ```bash
@@ -136,6 +136,7 @@ See `references/llm-gateway.md` for models, tool calling, structured outputs, an
 | `prompt` is context, not instructions | Universal-3.5 Pro's `prompt` *describes* the audio (domain/scenario/details). Formatting or behavioral commands (punctuation rules, "transcribe verbatim", negative directives like "don't…") are **not supported** and are ignored — transcription behavior is managed internally |
 | PII audio redaction method | `override_audio_redaction_method: "silence"` replaces PII with silence instead of default beep |
 | Language detection | Requires minimum 15 seconds of spoken audio for reliable results |
+| Async `language_code` / `language_detection` defaults | Neither defaults to a fixed value anymore. On `POST /v2/transcript`, **omitting `language_code` auto-runs language detection** (no more implicit `en_us`). `language_code` and `language_detection` are **mutually exclusive** — set `language_detection: false` only *together with* a `language_code`; disabling detection without naming a language errors. `language_confidence_threshold` can only be set when detection is on |
 | LLM Gateway EU region | Only Anthropic Claude and Google Gemini models available — OpenAI models are NOT supported in EU |
 | Disfluencies | Enable with `disfluencies: true` to keep "um"/"uh" in the transcript |
 | Medical Mode unsupported language | API silently skips Medical Mode and does not charge for it — check for warning in response |
@@ -175,7 +176,7 @@ See `references/llm-gateway.md` for models, tool calling, structured outputs, an
 | `claude-opus-4-20250514` / `claude-sonnet-4-20250514` on LLM Gateway | **Removed June 2026.** Use Claude Opus 4.5/4.6/4.7 or Claude Sonnet 4.5/4.6 |
 | Uploading to `/v2/upload` with `-d`/`--data` or a JSON body | Use `--data-binary @file` (raw bytes). `-d`/JSON returns a valid `upload_url` but transcription later fails with `Transcoding failed. File type application/json` |
 | Using Java/Go/C# SDKs | **Discontinued.** Use Python, JS/TS, Ruby, or raw API |
-| `word_boost` on the async REST API | Use `keyterms_prompt` instead. **Exception:** the Sync STT API *does* use `word_boost` (in its `config` part) — that's its documented keyterms param |
+| `word_boost` on the async REST API | Use `keyterms_prompt` instead. The Sync STT API's documented keyterms field is also `keyterms_prompt` (in its `config` part) — it *accepts* `word_boost`/`keyterms` as aliases, but prefer `keyterms_prompt` and send only one of the three |
 | Hardcoding v2 streaming URL | v3 (`/v3/ws`) is current; v2 still works but is legacy |
 | Using `speech_model=u3-rt-pro` for streaming | **Removed July 2026** from the model picker and streaming spec enum — superseded by `universal-3-5-pro` (the streaming default). Set a different model only for cost tradeoffs (`universal-streaming-english`/`-multilingual`) |
 | Python SDK rejects `universal-3-5-pro` | Upgrade to `assemblyai>=0.64.21` for Streaming v3 SDK support. Older SDKs such as `0.64.4` validate `speech_model` against an enum that omits `universal-3-5-pro` |
@@ -183,6 +184,8 @@ See `references/llm-gateway.md` for models, tool calling, structured outputs, an
 | S2S `session.update` without `"session"` key | Must wrap config: `{"type":"session.update","session":{...}}` |
 | S2S tool schema using `{"function":{...}}` nesting | S2S tools are flat: `{"type":"function","name":"...","description":"...","parameters":{...}}` |
 | Voice Agent S2S URL | Correct URL: `wss://agents.assemblyai.com/v1/ws` — not `/v1/voice` (renamed April 2026), `/v1/realtime` (older), or `speech-to-speech.us.assemblyai.com` (very old) |
+| Voice Agent REST create `"voice": "anna"` (string) | The stored-agent REST create/update body wants an **object**: `"voice": {"voice_id": "anna"}`. Only the WebSocket `session.output.voice` takes a plain string |
+| Voice Agent default voice `ivy` (and `james`, `tyler`, `winter`, `bella`, `david`, `arjun`, …) | **Deprecated July 2026** (still functional, will be removed later). Pick a current voice — English: `anna`/`alba`/`charles`/`eve`/`george`/`jane`/`jean`/`mary`/`michael` (🇺🇸), `paul`/`vera` (🇬🇧); native-accent: `giovanni` (IT), `lola` (ES), `juergen` (DE), `rafael` (PT), `estelle` (FR). See `references/voice-agents.md` |
 | Voice Agent `tool.call` `args` field | Renamed to `arguments` — `event["arguments"]` is the parameter dict |
 | Medical Mode `domain: "medical"` | Correct value is `domain: "medical-v1"` |
 | LLM Gateway tool result `role: "function_call_output"` | Correct role is `"tool"` — use `{"role": "tool", "tool_call_id": "...", "content": "..."}` |
@@ -204,7 +207,7 @@ Read the relevant reference file based on what the user needs:
 | `references/llm-gateway.md` | Applying LLMs to transcripts, tool calling, available models |
 | `references/speech-understanding.md` | Translation, speaker identification, custom formatting, summarization, action items |
 | `references/audio-intelligence.md` | PII redaction, diarization, summarization, sentiment, chapters |
-| `references/api-reference.md` | Full parameter list, export endpoints, webhooks, upload, PII policies, Sync STT API, Voice Agents REST API (stored agents, HTTP-tool headers, BYO LLM, webhook subscriptions) |
+| `references/api-reference.md` | Full parameter list, export endpoints, webhooks, upload, PII policies, Sync STT API (incl. `/warm` pre-warming), Voice Agents REST API (stored agents, HTTP-tool headers, BYO LLM, webhook subscriptions, Sessions API for recordings/transcripts) |
 
 ## API Spec Source of Truth
 

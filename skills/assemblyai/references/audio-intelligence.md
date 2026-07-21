@@ -4,13 +4,14 @@ All Audio Intelligence features are enabled via boolean parameters on the `POST 
 
 ## Speaker Diarization
 
-- Enable with `speaker_labels: true`
+- Enable with `speaker_labels: true` (**requires `punctuate: true`**, which is the default)
 - Response includes `utterances` array with `speaker`, `text`, `start`, `end`
 - Each word also gets a `speaker` field
+- Set a speaker range with `speaker_options` (`min_speakers_expected`/`max_speakers_expected`) — **requires `speaker_labels: true`** and is **mutually exclusive with the older `speakers_expected`** hint
 
 ## PII Redaction
 
-- Enable with `redact_pii: true`
+- Enable with `redact_pii: true` (**requires `format_text: true`**, which is the default)
 - `redact_pii_policies`: array of policy strings. Common policies include:
   - `person_name`
   - `phone_number`
@@ -32,7 +33,7 @@ All Audio Intelligence features are enabled via boolean parameters on the `POST 
 
 ## Sentiment Analysis
 
-- Enable with `sentiment_analysis: true`
+- Enable with `sentiment_analysis: true` (**requires `punctuate: true`**, which is the default)
 - Response includes `sentiment_analysis_results` array
 - Each result has `text`, `sentiment` (POSITIVE/NEGATIVE/NEUTRAL), `confidence`, `speaker`
 
