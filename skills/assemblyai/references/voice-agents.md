@@ -3,8 +3,8 @@
 AssemblyAI supports four paths for building voice agents:
 
 1. **Speech-to-Speech API** — single WebSocket for full voice agent (speech-in → LLM → speech-out)
-2. **LiveKit Agents** — fastest path to deployment using U3 Pro STT
-3. **Pipecat (by Daily)** — open-source, maximum customizability using U3 Pro STT
+2. **LiveKit Agents** — fastest path to deployment using Universal-3.5 Pro STT
+3. **Pipecat (by Daily)** — open-source, maximum customizability using Universal-3.5 Pro STT
 4. **Direct WebSocket** — fully custom STT builds (see `streaming.md`)
 
 ## Voice Agent API
@@ -125,6 +125,10 @@ The first `session.update` configures the agent one of **two mutually exclusive*
 
 `agent_id` is **mutually exclusive** with the inline fields — sending both in the same `session.update` raises a validation error. `agent_id` can only be set in the **first** `session.update`, before `session.ready`. After binding, you can still send later `session.update` messages to change mutable fields.
 
+### Bring your own LLM (`llm`)
+
+By default a voice agent uses AssemblyAI's **managed** conversational model. To run it on a different model, set the `llm` field on a **stored agent** (via the Agents REST API — this is a REST/create-time field, *not* a `session.update` field) to your own **OpenAI-compatible** endpoint: `{"llm": [{"base_url": "https://api.openai.com/v1", "model": "gpt-4o-mini", "api_key": "sk-..."}]}`. The list accepts **one entry today**; the model must support **streamed** chat completions; `api_key` is write-only. Send `"llm": []` to revert to the managed model. To use a frontier model without your own provider account, point `base_url` at the LLM Gateway (`https://llm-gateway.assemblyai.com/v1`) and pass your AssemblyAI key. Latency then depends on your endpoint. See `references/api-reference.md` for the full schema.
+
 ### Tool Definition Fields
 
 | Field | Type | Default | Notes |
@@ -243,7 +247,7 @@ For browser apps, enable echo cancellation via `getUserMedia({ audio: { echoCanc
 
 Set a voice via `session.output.voice` in `session.update` **before `session.ready`**. `output.voice` and `output.format` are immutable once the session is established — the voice **cannot be changed mid-conversation**. (`output.volume` is the exception — it remains mutable.) Default is `ivy`.
 
-**Every voice speaks all output languages** — 🇺🇸 English, French, German, Italian, Portuguese, Spanish, Hindi, Mandarin, Russian, Korean, and Japanese. The two groups below differ only by the voice's *primary accent*, not which languages it can speak. (Input recognition covers en/fr/de/it/pt/es only, so an agent can speak an output language it can't transcribe — useful for translation-style flows.)
+**Every voice speaks all output languages** — 🇺🇸 English, French, German, Italian, Portuguese, Spanish, Hindi, Mandarin, Russian, Korean, and Japanese. The two groups below differ only by the voice's *primary accent*, not which languages it can speak. Officially supported **output** languages (those with at least one native/primary-accent voice) are English, French, Italian, Spanish, Hindi, and Russian; German, Portuguese, Turkish, Dutch, and Swedish are on the roadmap. **Input** recognition uses Universal-3.5 Pro Streaming and covers **18 languages** with native code-switching (en, es, de, fr, pt, it, tr, nl, sv, no, da, fi, hi, vi, ar, he, ja, zh) — an agent can speak an output language it can't transcribe (useful for translation-style flows).
 
 **American-English accent** (carried into other languages):
 `ivy`, `james`, `tyler`, `winter`, `bella`, `david`, `kyle`, `helen`, `martha`, `river`, `emma`, `victor`, `eleanor`
@@ -286,19 +290,21 @@ In browsers, pre-handshake failures (like `UNAUTHORIZED`) surface as `close` eve
 
 **`universal-3-5-pro`** is the recommended default model for new STT-based voice agent work. The raw streaming API also defaults to it when `speech_model` is omitted; set it explicitly when pinning behavior or using an SDK that requires the field.
 
-| Feature | universal-3-5-pro | u3-rt-pro | universal-streaming-english | universal-streaming-multilingual |
-|---------|-------------------|-----------|------------------------------|----------------------------------|
-| Turn detection | Punctuation-based | Punctuation-based | Confidence-based | Confidence-based |
-| Custom prompting | Yes | Yes | No | No |
-| Keyterms boosting | Yes | Yes | Yes | Yes |
-| Speaker diarization | Yes | Yes | Yes | Yes |
-| Dynamic mid-session updates | Yes | Yes | Yes | Yes |
-| Multilingual code switching | Yes | Yes | No | Yes |
-| Languages | 18 (en, es, de, fr, pt, it, tr, nl, sv, no, da, fi, hi, vi, ar, he, ja, zh) | 6 (en, es, fr, de, it, pt) | English only | Multiple |
+| Feature | universal-3-5-pro | universal-streaming-english | universal-streaming-multilingual |
+|---------|-------------------|------------------------------|----------------------------------|
+| Turn detection | Punctuation-based | Confidence-based | Confidence-based |
+| Custom prompting | Yes | No | No |
+| Keyterms boosting | Yes | Yes | Yes |
+| Speaker diarization | Yes | Yes | Yes |
+| Dynamic mid-session updates | Yes | Yes | Yes |
+| Multilingual code switching | Yes | No | Yes |
+| Languages | 18 (en, es, de, fr, pt, it, tr, nl, sv, no, da, fi, hi, vi, ar, he, ja, zh) | English only | Multiple |
 
-`end_of_turn_confidence_threshold` does NOT work with `universal-3-5-pro` or `u3-rt-pro` — it only applies to older universal-streaming models.
+(`u3-rt-pro` / Universal-3 Pro Streaming was removed from the streaming model picker and spec enum in July 2026 — superseded by `universal-3-5-pro`.)
 
-## Turn Detection (universal-3-5-pro / u3-rt-pro)
+`end_of_turn_confidence_threshold` does NOT work with `universal-3-5-pro` — it only applies to the Universal Streaming (English/Multilingual) models.
+
+## Turn Detection (universal-3-5-pro)
 
 1. User pauses for `min_turn_silence` (e.g., 100ms)
 2. Model checks for terminal punctuation (`.` `?` `!`)
@@ -308,7 +314,7 @@ In browsers, pre-handshake failures (like `UNAUTHORIZED`) surface as `close` eve
 
 ## Silence Settings by Use Case
 
-These are for **Universal Streaming** models. U3 Pro-family defaults differ.
+These are for **Universal Streaming** models. universal-3-5-pro defaults differ (`max_turn_silence` 1536ms, or 768ms with `speaker_labels`).
 
 | Profile | min_turn_silence | max_turn_silence | Use Case |
 |---------|-----------------|-----------------|----------|

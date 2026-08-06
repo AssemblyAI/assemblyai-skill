@@ -77,7 +77,7 @@ Legacy parameters (still functional but not recommended for new code):
 
 - Enable with `domain: "medical-v1"` in the request body
 - Improves accuracy for medical terminology: medications, procedures, conditions, dosages
-- Supported models: Universal-3 Pro, Universal-2 (pre-recorded); all streaming models
+- Supported models: Universal-3.5 Pro, Universal-2 (pre-recorded); all streaming models
 - Supported languages: English, Spanish, German, French only
 - Billed as a separate add-on
 - If used with an unsupported language, the API ignores `domain` and returns a warning — no charge is applied

@@ -32,7 +32,7 @@ Submit an audio file for transcription. Send a JSON body with the parameters bel
 | Parameter | Type | Description |
 |---|---|---|
 | `audio_url` | string | **Required.** URL of the audio file to transcribe. Can be a public URL or an `upload_url` from the upload endpoint. |
-| `speech_models` | array | **Optional** (as of June 2026). Priority-ordered list of speech models to use (e.g., `["universal-3-5-pro", "universal-2"]`). First model is used if supported; falls back to next. If omitted, defaults to `["universal-3-pro", "universal-2"]`. Universal-3.5 Pro is accepted here (`["universal-3-5-pro"]`). |
+| `speech_models` | array | **Optional.** Priority-ordered list of speech models. First supported model is used; falls back to the next. **If omitted, defaults to `["universal-3-5-pro", "universal-2"]`.** The enum now accepts only `universal-3-5-pro` and `universal-2` — `universal-3-pro` was removed (superseded by `universal-3-5-pro`). The `speech_model_used` response field reports which model actually ran. |
 | `prompt` | string | For Universal-3.5 Pro, a contextual *description* of the audio (domain → scenario → full detail), **not** formatting/behavioral instructions (those are ignored). **Complementary with `keyterms_prompt`** — both can be set together. |
 | `keyterms_prompt` | array | List of key terms/phrases (strings) to boost recognition accuracy — up to **1000** terms for Universal-3.5 Pro, **200** for Universal-2, max **6 words per phrase**. **Complementary with `prompt`** — both can be set together. |
 | `language_code` | string | Language code (e.g., `"en_us"`, `"es"`, `"fr"`). Defaults to `"en_us"`. |
@@ -42,11 +42,11 @@ Submit an audio file for transcription. Send a JSON body with the parameters bel
 | `speaker_labels` | boolean | Enable speaker diarization. Default `false`. |
 | `sentiment_analysis` | boolean | Enable sentiment analysis on each sentence. Default `false`. |
 | `entity_detection` | boolean | Enable entity detection. Default `false`. |
-| `auto_chapters` | boolean | **Deprecated.** Enable auto chapters. Use LLM Gateway instead. |
+| `auto_chapters` | boolean | **Deprecated.** Use Speech Understanding `summarization` (chaptered summary; see `speech-understanding.md`) or the LLM Gateway instead. |
 | `iab_categories` | boolean | Enable IAB content category detection. Default `false`. |
 | `content_safety` | boolean | Enable content safety detection. Default `false`. |
 | `content_safety_confidence` | integer | Minimum confidence threshold (25-100) for content safety labels. |
-| `summarization` | boolean | **Deprecated.** Enable summarization. Use LLM Gateway instead. |
+| `summarization` | boolean | **Deprecated.** Use Speech Understanding `summarization`/`action_items` (see `speech-understanding.md`) or the LLM Gateway instead. |
 | `summary_model` | string | **Deprecated.** Model for summarization. |
 | `summary_type` | string | **Deprecated.** Type of summary. |
 | `redact_pii` | boolean | Enable PII redaction. Default `false`. |
@@ -68,10 +68,10 @@ Submit an audio file for transcription. Send a JSON body with the parameters bel
 | `speech_understanding` | object | Enable Speech Understanding inline. Features nest under `speech_understanding.request` (the `request` wrapper is required): `translation`, `speaker_identification`, and/or `custom_formatting`. See `speech-understanding.md`. |
 | `speakers_expected` | integer | Hint for number of speakers (diarization). Deprecated in favor of `speaker_options`. |
 | `speaker_options` | object | Diarization options: `min_speakers_expected` (int, default 1), `max_speakers_expected` (int). |
-| `temperature` | float | 0–1. Controls randomness. Universal-3 Pro only. |
-| `domain` | string | Domain-specific model variant. `"medical-v1"` enables Medical Mode (EN, ES, DE, FR). Supported on Universal-3 Pro and Universal-2. |
-| `remove_audio_tags` | string | Remove inline annotations from the transcript. `"all"` removes all (audio event markers and speaker cues); `"speaker"` removes only speaker cues while keeping other annotations. Universal-3 Pro only. |
-| `language_codes` | array | List of language codes for code-switching (must include `"en"`). Universal-3 Pro only. |
+| `temperature` | float | 0–1. Controls randomness. Universal-3.5 Pro only. |
+| `domain` | string | Domain-specific model variant. `"medical-v1"` enables Medical Mode (EN, ES, DE, FR). Supported on Universal-3.5 Pro and Universal-2. |
+| `remove_audio_tags` | string | Remove inline annotations from the transcript. `"all"` removes all (audio event markers and speaker cues); `"speaker"` removes only speaker cues while keeping other annotations. Universal-3.5 Pro only. |
+| `language_codes` | array | List of language codes for code-switching (must include `"en"`). Universal-3.5 Pro only. |
 | `audio_start_from` | integer | Start transcription from this time offset, in **milliseconds**. |
 | `audio_end_at` | integer | End transcription at this time offset, in **milliseconds**. |
 | `speech_threshold` | float | Confidence threshold (0-1) for filtering low-confidence speech. Requires at least **30 seconds** of audio. |
@@ -105,7 +105,7 @@ The transcript response may include an optional `metadata` object with additiona
   "metadata": {
     "domain_used": null,
     "warnings": [
-      { "message": "'ja' is not supported in universal-3-pro — transcription is handled by universal-2. To silence this warning, set speech_models: [\"universal-3-pro\", \"universal-2\"]." }
+      { "message": "'ur' is not supported in universal-3-5-pro — transcription is handled by universal-2. To silence this warning, set speech_models: [\"universal-3-5-pro\", \"universal-2\"]." }
     ]
   }
 }
@@ -479,11 +479,11 @@ A REST API for creating **reusable** voice agents. An agent stores its `system_p
 |---------------|-------------|
 | `POST /v1/agents` | Create an agent. Returns `201` with the full record including a generated `id`. |
 | `GET /v1/agents` | List agents (lightweight records, no tools/prompt), newest first. |
-| `GET /v1/agents/{agent_id}` | Retrieve one agent. Tool header **values** are masked as `"***"`. |
+| `GET /v1/agents/{agent_id}` | Retrieve one agent. Read responses return tool-header **names** and `last_set_at` only — header **values are never returned** (write-only, encrypted at rest; they are *not* masked as `"***"`). Likewise a connected LLM (`llm`) comes back as `base_url` + `model` only, never `api_key`. |
 | `PUT /v1/agents/{agent_id}` | Update an agent. Every field optional — send only what you want to change. |
 | `DELETE /v1/agents/{agent_id}` | Delete an agent. Returns `204`, no body. |
 
-**Create body** (`application/json`): required `name`, `system_prompt`, `voice`; optional `greeting`, `input`, `output`, `tools`. Note `voice` is a **top-level** field here (in the WebSocket `session.update` it lives under `output.voice`). `greeting` is spoken straight to TTS on connect — omit it to have the agent listen first.
+**Create body** (`application/json`): required `name`, `system_prompt`, `voice`; optional `greeting`, `input`, `output`, `tools`, `llm`. Note `voice` is a **top-level** field here (in the WebSocket `session.update` it lives under `output.voice`). `greeting` is spoken straight to TTS on connect — omit it to have the agent listen first.
 
 ```bash
 curl -X POST https://agents.assemblyai.com/v1/agents \
@@ -491,3 +491,43 @@ curl -X POST https://agents.assemblyai.com/v1/agents \
   -H 'Content-Type: application/json' \
   -d '{"name":"Support Bot","system_prompt":"You are a concise support agent.","voice":"ivy","greeting":"Hi, how can I help?"}'
 ```
+
+### Server-side HTTP tools (`headers` shape)
+
+A tool with an `http` block (`url`, `http_method`, `headers`) is executed **server-side** — AssemblyAI makes the request on your behalf. As of June 2026 `headers` is a **list of `{name, value}` entries**, NOT a `{name: value}` dict:
+
+```json
+{ "http": { "url": "https://api.example.com/orders", "http_method": "POST",
+  "headers": [ { "name": "Authorization", "value": "Bearer xyz" } ] } }
+```
+
+- **Write (create/update):** each entry is `{ name, value?, remove? }`. Provide `value` to set/rotate; provide name only to keep the stored value unchanged (round-tripping on update); `remove: true` deletes it. Sending both `value` and `remove: true` is rejected.
+- **Read (get/list):** each entry is `{ name, last_set_at }` — values are never returned.
+- Server-side constraints: `https` + public hosts only (private/loopback/CGNAT blocked); redirects not followed; response body capped at 8 KiB; per-call timeout from `timeout_seconds`.
+
+### Bring your own LLM (`llm`)
+
+Point an agent at your own **OpenAI-compatible** chat-completions endpoint instead of AssemblyAI's managed model. Set the `llm` field (a list; **only one entry accepted today**) on create/update:
+
+```json
+{ "llm": [ { "base_url": "https://api.openai.com/v1", "model": "gpt-4o-mini", "api_key": "sk-..." } ] }
+```
+
+- `base_url` (required, `https` + public host — the agent calls `POST {base_url}/chat/completions`), `model` (required), `api_key` (required, **write-only**, never returned).
+- Must support **streamed** chat completions. Send `"llm": []` to switch back to the managed model.
+- To use a frontier model without your own provider account, point `base_url` at the **LLM Gateway** (`https://llm-gateway.assemblyai.com/v1`, EU: `https://llm-gateway.eu.assemblyai.com/v1`) and pass your AssemblyAI key as `api_key`.
+
+## 18. Voice Agent Webhooks API
+
+A REST API (base URL `https://agents.assemblyai.com`, same auth) to subscribe URLs to Voice Agent lifecycle events.
+
+| Method & Path | Description |
+|---------------|-------------|
+| `POST /v1/webhook-subscriptions` | Subscribe a URL to one or more events. Scope to one agent with `agent_id`, or omit for account-wide events. Returns the created subscription. |
+| `GET /v1/webhook-subscriptions` | List subscriptions (paginated). |
+| `GET /v1/webhook-subscriptions/{subscription_id}` | Retrieve one subscription. |
+| `PUT /v1/webhook-subscriptions/{subscription_id}` | Update `url`, `events`, `secret`, or `enabled`. Sending a new `secret` rotates it and increments `secret_version`. |
+| `DELETE /v1/webhook-subscriptions/{subscription_id}` | Delete a subscription. Returns `204`. |
+
+- **Events:** `session.started`, `session.completed`, `call.connected`, `call.ended`, `call.failed`.
+- **Body fields:** `url` (`https` + public host, required), `events` (array, required), `secret` (32–256 printable ASCII chars, no whitespace — signing secret, **write-only**, only its `secret_version` is returned), `agent_id` (optional; omit for account-wide).
