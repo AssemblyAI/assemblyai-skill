@@ -207,16 +207,24 @@ for result in transcript.content_safety.results:
 
 ### Summarization
 
+The top-level `summarization=True` param is **deprecated**. Use Speech Understanding summarization instead — the SDK's `TranscriptionConfig` accepts the `speech_understanding` object directly (SDK ≥0.64.x), so you do NOT need to drop to raw REST for this:
+
 ```python
 config = aai.TranscriptionConfig(
-    summarization=True,
-    summary_model=aai.SummarizationModel.informative,
-    summary_type=aai.SummarizationType.bullets,
+    speaker_labels=True,
+    speech_understanding={
+        "request": {
+            "summarization": {"summary_type": "bullets", "effort": "low"},
+        }
+    },
 )
 transcript = transcriber.transcribe("https://example.com/audio.mp3", config=config)
 
-print(transcript.summary)
+su = transcript.json_response.get("speech_understanding", {})
+print(su.get("response", {}).get("summarization", {}).get("summary"))
 ```
+
+Typed request models exist too (`aai.types.SpeechUnderstandingRequest`). For fully custom summaries, use the LLM Gateway (section 9).
 
 > **Note:** `summarization` and `auto_chapters` are mutually exclusive. Do not enable both in the same config.
 
@@ -275,7 +283,7 @@ print(transcript.text)
 
 ## 8. Streaming v3 (Realtime)
 
-Use the `assemblyai.streaming.v3` client for new realtime STT code. Set `speech_model="universal-3-5-pro"` explicitly; the raw API defaults to it, but the Python SDK parameter is required. Requires `assemblyai>=0.64.21` — older SDKs such as `0.64.4` reject `universal-3-5-pro` during local parameter validation.
+Use the `assemblyai.streaming.v3` client for new realtime STT code. Set `speech_model="universal-3-5-pro"` explicitly; the raw API defaults to it, but the Python SDK parameter is required. Requires `assemblyai>=0.64.21` — older SDKs such as `0.64.4` reject `universal-3-5-pro` during local parameter validation. Newer features need newer SDKs: `sample_rate`-optional Opus input needs `>=0.64.26`; `session_heartbeat` and `aac` encoding need `>=0.64.32`.
 
 ```python
 import os
@@ -315,7 +323,7 @@ response = requests.post(
         "Content-Type": "application/json",
     },
     json={
-        "model": "claude-sonnet-4-20250514",
+        "model": "claude-sonnet-4-6",
         "messages": [
             {
                 "role": "user",
@@ -350,3 +358,31 @@ If you need to upload manually (e.g., to reuse the URL across multiple transcrip
 upload_url = transcriber.upload_file("/path/to/local/recording.wav")
 transcript = transcriber.transcribe(upload_url)
 ```
+
+---
+
+## 11. Sync STT (Short-Form Audio, ≤120s)
+
+`SyncTranscriber` (SDK ≥0.64.25) wraps the Sync STT API — one HTTP round trip, no polling. Call `warm()` shortly before transcribing to pre-establish the connection (it's idempotent and cheap), and set `keepalive_expiry` to hold the pooled connection between requests (useful in voice-agent pipelines):
+
+```python
+import assemblyai as aai
+
+aai.settings.api_key = "YOUR_API_KEY"
+aai.settings.keepalive_expiry = 30  # seconds to keep the connection alive between requests
+
+transcriber = aai.SyncTranscriber()
+transcriber.warm()  # optional: pre-warm so transcribe() reuses the open connection
+
+result = transcriber.transcribe(
+    "/path/to/local/recording.wav",
+    config=aai.SyncTranscriptionConfig(
+        prompt="Customer voice message about an online order.",
+        keyterms_prompt=["AssemblyAI"],
+        timestamps=True,  # opt-in word-level start/end (ms)
+    ),
+)
+print(result.text)
+```
+
+Accepts a local file path, raw bytes, or a stream — **not a URL**. There is also `transcribe_async()` and `close()`. The model defaults to `universal-3-5-pro` (the only sync model in the SDK). `SyncTranscriptionConfig` fields mirror the REST `config` part: `model`, `prompt`, `keyterms_prompt`, `conversation_context`, `language_codes`, `timestamps`, and `sample_rate`/`channels` for raw PCM. See `references/api-reference.md` §16 for limits and error codes.

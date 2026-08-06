@@ -32,7 +32,7 @@ Submit an audio file for transcription. Send a JSON body with the parameters bel
 | Parameter | Type | Description |
 |---|---|---|
 | `audio_url` | string | **Required.** URL of the audio file to transcribe. Can be a public URL or an `upload_url` from the upload endpoint. |
-| `speech_models` | array | **Optional.** Priority-ordered list of speech models. First supported model is used; falls back to the next. **If omitted, defaults to `["universal-3-5-pro", "universal-2"]`.** The enum now accepts only `universal-3-5-pro` and `universal-2` — `universal-3-pro` was removed (superseded by `universal-3-5-pro`). The `speech_model_used` response field reports which model actually ran. |
+| `speech_models` | array | **Optional.** Priority-ordered list of speech models. First supported model is used; falls back to the next. **If omitted, defaults to `["universal-3-5-pro", "universal-2"]`** for accounts created on/after July 7, 2026 — all remaining accounts switch to this default on **September 2, 2026** (from that date `["universal-3-pro"]` returns an error). The enum now accepts only `universal-3-5-pro` and `universal-2` — `universal-3-pro` was removed (superseded by `universal-3-5-pro`). The `speech_model_used` response field reports which model actually ran. |
 | `prompt` | string | For Universal-3.5 Pro, a contextual *description* of the audio (domain → scenario → full detail), **not** formatting/behavioral instructions (those are ignored). **Complementary with `keyterms_prompt`** — both can be set together. |
 | `keyterms_prompt` | array | List of key terms/phrases (strings) to boost recognition accuracy — up to **1000** terms for Universal-3.5 Pro, **200** for Universal-2, max **6 words per phrase**. **Complementary with `prompt`** — both can be set together. |
 | `language_code` | string | Language code (e.g., `"en_us"`, `"es"`, `"fr"`). Defaults to `"en_us"`. |
@@ -236,9 +236,9 @@ Set `multichannel: true` to transcribe each audio channel independently.
 
 Code switching allows transcription of audio that switches between multiple languages.
 
-### U3-Pro
+### Universal-3.5 Pro
 
-Set `language_detection: true` and include a `prompt` mentioning code-switching behavior (e.g., "The speaker switches between English and Spanish").
+Code-switching across its 18 languages is native — no configuration required. Optionally set `language_detection: true` to have the detected language reported, and mention the languages in the contextual `prompt` (e.g., "The speaker switches between English and Spanish") to reinforce steering.
 
 ### Universal-2
 
@@ -266,10 +266,11 @@ Use `language_detection_options` to refine detection:
 
 - `expected_languages` (array) — restrict detection to specific language codes
 - `fallback_language` (string) — fallback language code if detection fails
+- `localization` (array, added July 2026) — apply regional English spelling: only `en_au` and `en_uk` are accepted (anything else is a 400; max one locale per base language)
 
 ### Response Fields
 
-- `language_code` — detected language
+- `language_code` — detected language; when `localization` matched, this surfaces the applied locale (e.g. `en_au`)
 - `language_confidence` — confidence score
 - `speech_model_used` — which speech model was applied
 
@@ -285,6 +286,8 @@ Use `language_detection_options` to refine detection:
 Full list of supported PII policy values for `redact_pii_policies`:
 
 `account_number`, `banking_information`, `blood_type`, `credit_card_cvv`, `credit_card_expiration`, `credit_card_number`, `date`, `date_interval`, `date_of_birth`, `drivers_license`, `drug`, `duration`, `email_address`, `event`, `filename`, `gender`, `gender_sexuality`, `healthcare_number`, `injury`, `ip_address`, `language`, `location`, `location_address`, `location_address_street`, `location_city`, `location_coordinate`, `location_country`, `location_state`, `location_zip`, `marital_status`, `medical_condition`, `medical_process`, `money_amount`, `nationality`, `number_sequence`, `occupation`, `organization`, `organization_medical_facility`, `passport_number`, `password`, `person_age`, `person_name`, `phone_number`, `physical_attribute`, `political_affiliation`, `religion`, `sexuality`, `statistics`, `time`, `url`, `us_social_security_number`, `username`, `vehicle_id`, `zodiac_sign`
+
+The granular `location_*` policies (July 2026) behave hierarchically: a full contiguous spoken address is redacted as a **single `location_address` span**, while standalone fragments ("I live in Denver") are tagged with their subtype (`location_city`).
 
 ---
 
@@ -378,12 +381,16 @@ A separate **synchronous** endpoint for clips between **80ms and 120s** — subm
 ### Endpoint
 
 ```
-POST https://sync.assemblyai.com/transcribe
+POST https://sync.assemblyai.com/v1/transcribe
 ```
+
+Routes are versioned as of July 2026 — the unprefixed `/transcribe` still works for legacy clients, but new code should use `/v1/`.
 
 - `sync.assemblyai.com` — global default (routes to nearest region)
 - `sync.us.assemblyai.com` — US residency (us-west-2, us-east-1)
 - `sync.eu.assemblyai.com` — EU residency (eu-north-1)
+
+**Pre-warming:** `GET https://sync.assemblyai.com/v1/warm` establishes the connection ahead of the first real request (returns `200 {"warm":"toasty"}`). Python SDK: `SyncTranscriber.warm()` + `aai.settings.keepalive_expiry`; the Node SDK also ships `SyncTranscriber`.
 
 ### Headers
 
@@ -403,14 +410,15 @@ POST https://sync.assemblyai.com/transcribe
 
 | Field | Type | Notes |
 |-------|------|-------|
-| `prompt` | string | Custom instruction prepended to the model's system prompt. Max **4096** chars. Default applied when omitted. |
-| `word_boost` | string[] | Keyterms that bias the decoder. Max **2048** chars total across all terms. (This is the documented keyterms param for Sync — *not* `keyterms_prompt`.) |
+| `prompt` | string | Contextual *description* of the audio (domain/scenario/details), prepended to the model's built-in transcription prompt. Max **4096** chars. Default applied when omitted. Like the async/streaming `prompt`, it carries context — not formatting/behavioral instructions. |
+| `keyterms_prompt` | string[] | Keyterms that bias the decoder. Max **2048** chars total across all terms. **Renamed from `word_boost` in July 2026** — the aliases `word_boost` and `keyterms` are still accepted. |
 | `conversation_context` | string \| string[] | Prior turns from the same conversation in chronological order (oldest first, most recent last). Supplies the preceding dialogue as context for greater continuity across a multi-turn conversation (e.g. a user talking with a voice agent). A single string is treated as one turn. Oldest turns dropped first when over the context-window limit. |
-| `language_code` | string \| string[] | Language of the audio as an ISO 639-1 code, or a list for multilingual audio. Steers the default transcription prompt toward the named language(s). **Ignored when a custom `prompt` is set.** Default `en`. One of: en, es, de, fr, it, pt, tr, nl, sv, no, da, fi, hi, vi, ar, he, ja, ur, zh. |
+| `language_codes` | string[] \| string | Language(s) of the audio as ISO 639-1 codes (singular `language_code` also accepted). Steers the default transcription prompt toward the named language(s). **Ignored when a custom `prompt` is set.** Default `en`. One of: en, es, de, fr, it, pt, tr, nl, sv, no, da, fi, hi, vi, ar, he, ja, ur, zh. |
+| `timestamps` | boolean | Default `false`. Opt-in per-word `start`/`end` (integer ms) via forced alignment. Works for all request languages; timestamps are **omitted** (never estimated) if the aligner is unavailable. |
 | `sample_rate` | integer | Required for `audio/pcm`. One of 8000, 16000, 22050, 24000, 32000, 44100, 48000. WAV reads it from the header. |
 | `channels` | integer | Required for `audio/pcm`. `1` or `2` (stereo down-mixed to mono internally). |
 
-`prompt` and `word_boost` can both be set in the same `config` part.
+`prompt` and `keyterms_prompt` can both be set in the same `config` part. **Unknown `config` fields are rejected with a 400** — don't pass async-API params here.
 
 ### Response
 
@@ -422,11 +430,12 @@ POST https://sync.assemblyai.com/transcribe
   ],
   "confidence": 0.87,
   "audio_duration_ms": 101567,
-  "session_id": "eb92c4ff-4bbb-429f-9b99-7279d7fe738f"
+  "session_id": "eb92c4ff-4bbb-429f-9b99-7279d7fe738f",
+  "request_time_ms": 143
 }
 ```
 
-Word timestamps use the fields `start` / `end` (integer **milliseconds**) — same field names as the async API. Note the clip-level `audio_duration_ms` does carry the `_ms` suffix. Include `session_id` in support requests.
+Word `start` / `end` (integer **milliseconds** — same field names as the async API) appear **only when `timestamps: true`** is set in `config`; otherwise `words[]` carries `text` + `confidence` only. Note the clip-level durations carry the `_ms` suffix. Include `session_id` in support requests.
 
 ### Audio Requirements
 
@@ -459,11 +468,11 @@ Errors return JSON with either `error_code` + `message` (audio/capacity/inferenc
 ### Example
 
 ```bash
-curl -X POST https://sync.assemblyai.com/transcribe \
+curl -X POST https://sync.assemblyai.com/v1/transcribe \
   -H 'Authorization: YOUR_API_KEY' \
   -H 'X-AAI-Model: universal-3-5-pro' \
   -F 'audio=@sample.wav;type=audio/wav' \
-  -F 'config={"prompt":"Transcribe verbatim.","word_boost":["AssemblyAI"]};type=application/json'
+  -F 'config={"prompt":"Customer voice message about an online order.","keyterms_prompt":["AssemblyAI"],"timestamps":true};type=application/json'
 ```
 
 When to use: short pre-recorded clips needing an immediate response (voice messages, short call recordings, externally-segmented voice-agent utterances). For audio > 120s use the async REST API; for live mic audio use Streaming.
@@ -482,6 +491,19 @@ A REST API for creating **reusable** voice agents. An agent stores its `system_p
 | `GET /v1/agents/{agent_id}` | Retrieve one agent. Read responses return tool-header **names** and `last_set_at` only — header **values are never returned** (write-only, encrypted at rest; they are *not* masked as `"***"`). Likewise a connected LLM (`llm`) comes back as `base_url` + `model` only, never `api_key`. |
 | `PUT /v1/agents/{agent_id}` | Update an agent. Every field optional — send only what you want to change. |
 | `DELETE /v1/agents/{agent_id}` | Delete an agent. Returns `204`, no body. |
+| `GET /v1/builtin-tools` | List platform built-in tools (`{name, description, parameters, execution_mode}`) — added July 2026. Attach one to an agent by passing its `name` in `tools[]`. The `aai_` name prefix is reserved for these. |
+| `GET /v1/voices` | Authoritative live list of TTS voices. |
+
+### Sessions API (session history — added July 2026)
+
+Retrieve past Voice Agent sessions — the documented way to get recordings and conversation timelines after a call (poll this, or use webhook subscriptions below):
+
+| Method & Path | Description |
+|---------------|-------------|
+| `GET /v1/sessions` | List sessions, newest first. `limit` 1–200 (default 50), cursor-paged; filter by `status` and/or `agent_id`. Records include `agent_id`. |
+| `GET /v1/sessions/{session_id}` | One session with its **recording** and conversation **timeline**. |
+| `DELETE /v1/sessions/{session_id}` | Delete a session record. |
+| `GET /v1/token` | Generate a temporary client token for browser use (see `references/voice-agents.md`). |
 
 **Create body** (`application/json`): required `name`, `system_prompt`, `voice`; optional `greeting`, `input`, `output`, `tools`, `llm`. Note `voice` is a **top-level** field here (in the WebSocket `session.update` it lives under `output.voice`). `greeting` is spoken straight to TTS on connect — omit it to have the agent listen first.
 

@@ -158,15 +158,20 @@ for (const chapter of transcript.chapters!) {
 
 ### Summarization
 
+The top-level `summarization: true` param is **deprecated**. Use Speech Understanding summarization instead — the SDK's transcript params accept `speech_understanding` directly, so you do NOT need raw fetch for this:
+
 ```typescript
 const transcript = await client.transcripts.transcribe({
   audio: "https://example.com/audio.mp3",
-  summarization: true,
-  summary_model: "informative", // "informative", "conversational", "catchy"
-  summary_type: "bullets",      // "bullets", "bullets_verbose", "gist", "headline", "paragraph"
+  speaker_labels: true,
+  speech_understanding: {
+    request: {
+      summarization: { summary_type: "bullets", effort: "low" },
+    },
+  },
 });
 
-console.log(transcript.summary);
+console.log(transcript.speech_understanding?.response?.summarization?.summary);
 ```
 
 ### Content safety
@@ -296,7 +301,7 @@ const response = await fetch(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "claude-sonnet-4-5-20250929",
+      model: "claude-sonnet-4-6",
       messages: [
         { role: "user", content: "Summarize this transcript..." },
       ],
@@ -307,3 +312,26 @@ const response = await fetch(
 const data = await response.json();
 console.log(data.choices[0].message.content);
 ```
+
+---
+
+## 10. Sync STT (Short-Form Audio, ≤120s)
+
+`client.sync` (SDK ≥4.36) is a `SyncTranscriber` wrapping the Sync STT API — one HTTP round trip, no polling. The model defaults to `universal-3-5-pro`:
+
+```typescript
+import { AssemblyAI } from "assemblyai";
+
+const client = new AssemblyAI({ apiKey: process.env.ASSEMBLYAI_API_KEY! });
+
+await client.sync.warm(); // optional: pre-establish the connection (idempotent, cheap)
+
+const result = await client.sync.transcribe("/path/to/local/recording.wav", {
+  prompt: "Customer voice message about an online order.",
+  keyterms_prompt: ["AssemblyAI"],
+  timestamps: true, // opt-in word-level start/end (ms)
+});
+console.log(result.text);
+```
+
+The first argument accepts a local file path, raw audio bytes, a Blob, or a readable stream — **not a URL**. The config (second argument) mirrors the REST `config` part: `model`, `prompt`, `keyterms_prompt`, `conversation_context`, `language_codes`, `timestamps`, and `sample_rate`/`channels` for raw PCM. Word `start`/`end` appear only when `timestamps: true`. The client-side request timeout defaults to 60s (see `SyncTranscribeOptions`). See `references/api-reference.md` §16 for limits and error codes.
