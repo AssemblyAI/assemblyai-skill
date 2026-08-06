@@ -43,9 +43,9 @@ Defaults to `audio/pcm` (24 kHz) on both input and output if omitted. ~50ms chun
 | Event | Description |
 |-------|-------------|
 | `input.audio` | Send audio chunk: `{"type": "input.audio", "audio": "<base64>"}` |
-| `session.update` | Configure session: `system_prompt`, `greeting`, `tools`, `input` (format/keyterms/turn_detection), `output` (voice/format/volume) |
+| `session.update` | Configure session: `system_prompt`, `greeting`, `tools`, `input` (format/keyterms/turn_detection/transcription_mode/transcription_prompt/continuous_partials/language_codes/voice_focus), `output` (voice/format/volume) |
 | `session.resume` | Reconnect to an existing session: `{"type": "session.resume", "session_id": "..."}` |
-| `tool.result` | Return tool call result back to the agent: `{"type": "tool.result", "call_id": "...", "result": "<JSON string>"}` |
+| `tool.result` | Return tool call result back to the agent: `{"type": "tool.result", "call_id": "...", "result": "<JSON string>"}`. Optional **`is_error`** boolean (default `false`) tells the agent the call failed so it can voice the failure (steered by the tool's `response_instructions.error` if set) |
 | `reply.create` | Ask the agent to generate a reply right now, optionally with one-shot `instructions`: `{"type": "reply.create", "instructions": "Tell the user we're still processing."}`. Primarily used to deliver status updates during a `hold`-mode tool call |
 | `session.end` | End the session cleanly: `{"type": "session.end"}` (no other fields). Server emits a final `session.ended` and closes the WebSocket; the `session_id` dies immediately and cannot be resumed. Short-circuits the 30s resume grace window and **stops billing immediately** |
 
@@ -53,14 +53,15 @@ Defaults to `audio/pcm` (24 kHz) on both input and output if omitted. ~50ms chun
 
 | Event | Description |
 |-------|-------------|
-| `session.ready` | Session is initialized; includes `session_id` (always present) for `session.resume` |
-| `session.updated` | Session configuration has been updated |
+| `session.ready` | Session is initialized; includes `session_id` (always present) for `session.resume`. Echoes the full **resolved** session config (stored agent + overrides), as does `session.updated` |
+| `session.updated` | Session configuration has been updated (echoes the full resolved config) |
 | `input.speech.started` | Turn detection determined the user has started speaking (for barge-in) |
 | `input.speech.stopped` | Turn detection determined the user has stopped speaking |
-| `transcript.user.delta` | Partial user transcript |
+| `transcript.user.delta` | Partial user transcript: `item_id`, `text`, `timestamp`. `text` is the **cumulative** running partial for the turn — render the latest one, don't concatenate |
 | `transcript.user` | Final user transcript with `item_id` |
 | `reply.started` | Agent is starting a reply (includes `reply_id`) |
 | `reply.audio` | Agent audio chunk (base64-encoded in configured output encoding) |
+| `transcript.agent.delta` | Word-by-word agent transcript as it speaks (added July 2026) — use for live agent captions |
 | `transcript.agent` | Agent's reply text with `interrupted` boolean (true if user barged in) |
 | `reply.done` | Agent reply complete; optional `status: "interrupted"` if user barged in |
 | `tool.call` | Agent wants to call a tool — payload includes `call_id`, `name`, `arguments` (dict, **not** `args`) |
@@ -118,12 +119,12 @@ Sessions are preserved for **30 seconds** after disconnection. Reconnect using `
 
 ### Stored agents vs. inline config (`agent_id`)
 
-The first `session.update` configures the agent one of **two mutually exclusive** ways:
+The first `session.update` configures the agent one of two ways:
 
-- **Stored agent** — send `{"type": "session.update", "session": {"agent_id": "<id>"}}` with `agent_id` as the *only* field in `session`. The agent's stored `system_prompt`, `greeting`, `tools`, `input`, and `output` are applied server-side. Create reusable stored agents via the Agents REST API (`POST https://agents.assemblyai.com/v1/agents` — see `references/api-reference.md`).
+- **Stored agent** — send `{"type": "session.update", "session": {"agent_id": "<id>"}}`. The agent's stored `system_prompt`, `greeting`, `tools`, `input`, and `output` are applied server-side. Create reusable stored agents via the Agents REST API (`POST https://agents.assemblyai.com/v1/agents` — see `references/api-reference.md`).
 - **Inline config** — omit `agent_id` and send `system_prompt`, `greeting`, `tools`, `input`, `output` directly (the example above). Best for one-off or fully dynamic agents.
 
-`agent_id` is **mutually exclusive** with the inline fields — sending both in the same `session.update` raises a validation error. `agent_id` can only be set in the **first** `session.update`, before `session.ready`. After binding, you can still send later `session.update` messages to change mutable fields.
+**As of July 2026 these are no longer strictly exclusive.** A stored-agent session accepts overrides for the **mutable** fields (`system_prompt`, `tools`, `input`) — alongside `agent_id` or in later `session.update` messages; the old `agent_id_no_overrides` validation error is gone. Still bootstrap-only for stored agents: `greeting`, `output.voice`/`format`, `llm`, and server-side HTTP-tool secrets. `agent_id` itself can only be set in the **first** `session.update`, before `session.ready`.
 
 ### Bring your own LLM (`llm`)
 
@@ -139,14 +140,17 @@ By default a voice agent uses AssemblyAI's **managed** conversational model. To 
 | `parameters` | object | `{}` | JSON Schema. **NOT validated at `session.update` time** — malformed schemas are accepted silently and break tool calling at runtime |
 | `execution_mode` | string | `"interactive"` | `"interactive"` (agent fills wait with transition phrase) or `"hold"` (agent silent; user replies suppressed). Interactive for sub-5s tools; hold for >10s, transfers, payment |
 | `timeout_seconds` | number | `120` | 1–300. On timeout the agent apologises; the session continues |
+| `response_instructions` | object | — | Optional `{success: "...", error: "..."}` strings steering how the agent voices the tool outcome (added July 2026). The `error` branch fires when `tool.result` has `is_error: true` |
 
 `session.tools` updates **replace** the previous array (not merge). Pattern: progressive tool reveal — start with minimal tools, add the next phase's tools after each successful `tool.result`.
+
+**Built-in platform tools:** `GET https://agents.assemblyai.com/v1/builtin-tools` lists platform-provided tools (`{name, description, parameters, execution_mode}`); attach one by passing its `name` in `tools[]` — no `parameters` needed. Currently: `aai_credit_card_luhn_check` (Luhn-validates a card number, interactive). The `aai_` name prefix is **reserved** — custom tool names can't start with it.
 
 ### Mutability After `session.ready`
 
 | Field | Mutable? |
 |-------|----------|
-| `system_prompt`, `input.turn_detection`, `input.keyterms` (up to 100 strings), `input.format`, `tools`, `output.volume` | **Yes** |
+| `system_prompt`, `input.turn_detection`, `input.keyterms` (up to 100 strings), `input.format`, `input.transcription_mode`, `input.transcription_prompt`, `input.continuous_partials`, `input.language_codes`, `tools`, `output.volume` | **Yes** |
 | `greeting`, `output.voice`, `output.format` | **No** — raises `immutable_field` |
 
 **Greeting goes straight to TTS, NOT through the LLM.** Whatever string you set is exactly what the user hears, word for word. Don't write meta-greetings like "Greet the user warmly and ask how you can help" — the TTS will literally speak that sentence.
@@ -161,6 +165,21 @@ All fields under `session.input.turn_detection` — **note the field names diffe
 | `min_silence`        | integer | `1000`  | Minimum silence to consider a confident end-of-turn, in milliseconds.      |
 | `max_silence`        | integer | `3000`  | Maximum silence before forcing end-of-turn, in milliseconds.               |
 | `interrupt_response` | boolean | `true`  | Whether user speech interrupts the agent. Set `false` to disable barge-in. |
+| `interruption_delay` | integer | —       | How soon user speech counts as an interruption, in ms (added July 2026). Lower = faster barge-in, more false interruptions. |
+
+Stored-agent `min_silence`/`max_silence` are honored on **telephony calls** too since August 2026 (previously ignored on phone calls; an empty `turn_detection` object gets the 1000/3000ms defaults).
+
+### Session-Level STT Tuning (added July 2026)
+
+`session.input` (type `audio`) also accepts per-session STT controls, all updatable mid-call via `session.update`:
+
+| Field | Values | Purpose |
+|-------|--------|---------|
+| `transcription_mode` | `balanced` (default) / `min_latency` / `max_accuracy` | Latency-vs-accuracy preset for the underlying STT |
+| `transcription_prompt` | string ≤1750 chars | Contextual *description* of the audio for STT vocabulary biasing — distinct from `system_prompt` (which steers the LLM, not the transcription) |
+| `continuous_partials` | boolean | Steadier partial-transcript cadence during long user turns |
+| `language_codes` | list of ISO 639-1 codes | Pin the expected input language(s) instead of auto-detection across all 18 |
+| `voice_focus` / `voice_focus_threshold` | `near-field`/`far-field`; float 0–1 | Noise suppression before STT (background chatter, keyboard, hum). Applied at stream init |
 
 ### Tool Call Pattern
 
@@ -247,7 +266,7 @@ For browser apps, enable echo cancellation via `getUserMedia({ audio: { echoCanc
 
 Set a voice via `session.output.voice` in `session.update` **before `session.ready`**. `output.voice` and `output.format` are immutable once the session is established — the voice **cannot be changed mid-conversation**. (`output.volume` is the exception — it remains mutable.) Default is `ivy`.
 
-**Every voice speaks all output languages** — 🇺🇸 English, French, German, Italian, Portuguese, Spanish, Hindi, Mandarin, Russian, Korean, and Japanese. The two groups below differ only by the voice's *primary accent*, not which languages it can speak. Officially supported **output** languages (those with at least one native/primary-accent voice) are English, French, Italian, Spanish, Hindi, and Russian; German, Portuguese, Turkish, Dutch, and Swedish are on the roadmap. **Input** recognition uses Universal-3.5 Pro Streaming and covers **18 languages** with native code-switching (en, es, de, fr, pt, it, tr, nl, sv, no, da, fi, hi, vi, ar, he, ja, zh) — an agent can speak an output language it can't transcribe (useful for translation-style flows).
+**Every voice speaks all output languages** — 🇺🇸 English, French, German, Italian, Portuguese, Spanish, Hindi, Mandarin, Russian, Korean, and Japanese. The two groups below differ only by the voice's *primary accent*, not which languages it can speak. Officially supported **output** languages (those with at least one native/primary-accent voice) are English, French, Italian, Spanish, Hindi, Russian, and — since the July 2026 voice generation — German and Portuguese; Turkish, Dutch, and Swedish are on the roadmap. **Input** recognition uses Universal-3.5 Pro Streaming and covers **18 languages** with native code-switching (en, es, de, fr, pt, it, tr, nl, sv, no, da, fi, hi, vi, ar, he, ja, zh) — an agent can speak an output language it can't transcribe (useful for translation-style flows).
 
 **American-English accent** (carried into other languages):
 `ivy`, `james`, `tyler`, `winter`, `bella`, `david`, `kyle`, `helen`, `martha`, `river`, `emma`, `victor`, `eleanor`
@@ -255,7 +274,9 @@ Set a voice via `session.output.voice` in `session.update` **before `session.rea
 **Native non-English accent** (code-switches with English):
 `arjun` (Hindi/Hinglish), `dmitri` (Russian), `pierre` (French), `giulia`/`luca` (Italian), `lucia`/`mateo` (Spanish), `diego` (Latin American / Colombian Spanish)
 
-**Removed June 2026** (now rejected at `session.update`): `sam`, `mia`, `jack` (US); `sophie`, `oliver` (UK — no UK voices remain); `ethan`, `mei` (Mandarin); `lukas`, `lena` (German); `mina`, `joon` (Korean); `ren`, `hana` (Japanese). Any name not in the lists above (including older names like `autumn`, `claire`, `dawn`, `josh`, `grace`, `pete`) silently fails — call `GET https://agents.assemblyai.com/v1/voices` for the authoritative live list.
+**New voice generation (July 2026)** — 16 voices on AssemblyAI's new in-house TTS backend: US English `alba`, `anna`, `charles`, `eve`, `george`, `jane`, `jean`, `mary`, `michael`; **UK English** `paul`, `vera`; and native-accent `giovanni` (Italian), `lola` (Spanish), `juergen` (German), `rafael` (Portuguese), `estelle` (French). The docs' output-languages page lists recommended voices per language.
+
+**Removed June 2026** (now rejected at `session.update`): `sam`, `mia`, `jack` (US); `sophie`, `oliver` (UK); `ethan`, `mei` (Mandarin); `lukas`, `lena` (German); `mina`, `joon` (Korean); `ren`, `hana` (Japanese). Any name not in the lists above (including older names like `autumn`, `claire`, `dawn`, `josh`, `grace`, `pete`) silently fails — call `GET https://agents.assemblyai.com/v1/voices` for the authoritative live list.
 
 ```json
 {"type": "session.update", "session": {"output": {"voice": "ivy"}}}
@@ -413,6 +434,8 @@ Other modes: **VAD-only** (purely silence-based) and **Manual** (explicit `sessi
 | Want faster barge-in / TTFT | Lower `interruption_delay` (default `500`); `interruption_delay=0` → ~300ms effective first partial |
 
 You can update `prompt`, `keyterms_prompt`, `min_turn_silence`, `max_turn_silence`, `continuous_partials`, and `interruption_delay` mid-session via `stt.update_options(...)` — e.g. raise `max_turn_silence` during entity dictation, or lower `interruption_delay` when the agent is speaking for faster barge-in.
+
+LiveKit Agents **v1.6.5+** also exposes `agent_context_carryover` as a first-class plugin param — it feeds the agent's spoken replies back as `agent_context` automatically, so the STT knows what question the user is answering (see Context Carryover in `streaming.md`).
 
 ---
 

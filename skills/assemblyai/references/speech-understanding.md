@@ -2,7 +2,7 @@
 
 ## Overview
 
-Speech Understanding provides post-transcription intelligence: **Translation, Speaker Identification, Custom Formatting, Summarization, and Action Items**. (Entity Detection, Sentiment Analysis, Key Phrases, and Topic Detection are *not* part of this object — they remain classic boolean transcript params; see `audio-intelligence.md`.)
+Speech Understanding provides post-transcription intelligence: **Translation, Speaker Identification, Custom Formatting, Summarization, and Action Items**. (Entity Detection, Sentiment Analysis, Key Phrases, and Topic Detection are *not* part of this object — they remain classic boolean transcript params; see `audio-intelligence.md`. The docs now group all of these under a single "Speech Understanding" section, but the request shapes are unchanged — only the five features here use the `speech_understanding` object.)
 
 > **Summarization vs the deprecated `summarization`/`auto_chapters` params:** the top-level `summarization` and `auto_chapters` boolean params on `POST /v2/transcript` are **deprecated**. The modern replacements are the Speech Understanding `summarization` (chaptered summary with timestamps + headlines) and `action_items` features below — or the LLM Gateway for fully custom prompts.
 
@@ -38,6 +38,7 @@ Translates the transcript into one or more target languages.
 - `target_languages` (array, **required**): language codes to translate into (e.g., `["es", "de"]`).
 - `formal` (boolean, default `false`): when `true`, uses formal pronouns/grammatical forms.
 - `match_original_utterance` (boolean, default `false`): when `true`, adds a `translated_texts` key to each utterance. **Requires `speaker_labels: true`.**
+- `force_translation` (boolean, default `false`, added August 2026): translate even when the detected source language equals the target language (by default such targets are skipped).
 
 ### Example Request
 

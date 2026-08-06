@@ -307,3 +307,26 @@ const response = await fetch(
 const data = await response.json();
 console.log(data.choices[0].message.content);
 ```
+
+---
+
+## 10. Sync STT (Short-Form Audio, ≤120s)
+
+`client.sync` (SDK ≥4.36) is a `SyncTranscriber` wrapping the Sync STT API — one HTTP round trip, no polling. The model defaults to `universal-3-5-pro`:
+
+```typescript
+import { AssemblyAI } from "assemblyai";
+
+const client = new AssemblyAI({ apiKey: process.env.ASSEMBLYAI_API_KEY! });
+
+await client.sync.warm(); // optional: pre-establish the connection (idempotent, cheap)
+
+const result = await client.sync.transcribe("/path/to/local/recording.wav", {
+  prompt: "Customer voice message about an online order.",
+  keyterms_prompt: ["AssemblyAI"],
+  timestamps: true, // opt-in word-level start/end (ms)
+});
+console.log(result.text);
+```
+
+The first argument accepts a local file path, raw audio bytes, a Blob, or a readable stream — **not a URL**. The config (second argument) mirrors the REST `config` part: `model`, `prompt`, `keyterms_prompt`, `conversation_context`, `language_codes`, `timestamps`, and `sample_rate`/`channels` for raw PCM. Word `start`/`end` appear only when `timestamps: true`. The client-side request timeout defaults to 60s (see `SyncTranscribeOptions`). See `references/api-reference.md` §16 for limits and error codes.

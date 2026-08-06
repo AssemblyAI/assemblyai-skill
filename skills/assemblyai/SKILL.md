@@ -43,7 +43,9 @@ Authorization: YOUR_API_KEY
 
 ## Speech-to-Text Models
 
-**`universal-3-5-pro` is the model to use across the board.** It is GA for **both** realtime/streaming and pre-recorded/async transcription and is the default on each. Use it everywhere by default; drop to `universal-2` only for cost or for languages outside Universal-3.5 Pro's 18. `universal-3-pro` (async) and `u3-rt-pro` (streaming) have both been **superseded by `universal-3-5-pro`** and removed from their model lists/enums.
+**`universal-3-5-pro` is the model to use across the board.** It is GA for **both** realtime/streaming and pre-recorded/async transcription. Use it everywhere by default; drop to `universal-2` only for cost or for languages outside Universal-3.5 Pro's 18. `universal-3-pro` (async) and `u3-rt-pro` (streaming) have both been **superseded by `universal-3-5-pro`** and removed from their model lists/enums.
+
+**Default-model transition (async):** accounts created on/after **July 7, 2026** already default to `["universal-3-5-pro", "universal-2"]` when `speech_models` is omitted (and cannot request `universal-3-pro`/`universal`). All remaining accounts switch on **September 2, 2026** — from that date, an omitted/empty/singular `speech_model`, or `["universal"]`, routes to `universal-3-5-pro`; `speech_models: ["universal-3-pro"]` returns an **error**; and streaming `u3-rt-pro` connections are silently redirected to `universal-3-5-pro`. Pin `speech_models` explicitly if you need deterministic behavior across the transition.
 
 ### Pre-Recorded
 
@@ -52,7 +54,7 @@ Authorization: YOUR_API_KEY
 | **Universal-3.5 Pro** (recommended default) | 18 (auto-falls back to Universal-2 for the other 99) | Flagship: best accuracy, fastest, native code-switching across its 18 languages, contextual `prompt`, keyterms up to 1,000 words |
 | **Universal-2** | 99 | Cost-effective; broadest language coverage; keyterms up to 200 words; fallback for languages outside Universal-3.5 Pro's 18 |
 
-On `POST /v2/transcript`, `speech_models` is a priority list with fallback and **defaults to `["universal-3-5-pro", "universal-2"]`** when omitted — Universal-3.5 Pro handles its 18 languages and automatically falls back to Universal-2 for the rest. The async `speech_models` enum now accepts only `universal-3-5-pro` and `universal-2` (`universal-3-pro` has been removed, superseded by `universal-3-5-pro`). Universal-3.5 Pro supports contextual `prompt` (a plain-language *description* of the audio) and `keyterms_prompt` (up to 1,000 terms). Check the `speech_model_used` response field to see which model actually ran.
+On `POST /v2/transcript`, `speech_models` is a priority list with fallback — the documented default is `["universal-3-5-pro", "universal-2"]` (already live for accounts created on/after July 7, 2026; all accounts from September 2, 2026 — see the transition note above). Universal-3.5 Pro handles its 18 languages and automatically falls back to Universal-2 for the rest. The async `speech_models` enum now accepts only `universal-3-5-pro` and `universal-2` (`universal-3-pro` has been removed, superseded by `universal-3-5-pro`). The **singular** `speech_model` field rejects current model names with a 400 (legacy names `best`/`universal` still route to the default; `nano` is no longer documented). Universal-3.5 Pro supports contextual `prompt` (a plain-language *description* of the audio) and `keyterms_prompt` (up to 1,000 terms; native in-model biasing — Universal-2's keyterms are phonetic post-processing, ≤200 terms, English only, terms shorter than 5 or longer than 50 characters ignored). Check the `speech_model_used` response field to see which model actually ran.
 
 ### Streaming
 
@@ -99,19 +101,20 @@ For realtime/streaming STT, use `speech_model: "universal-3-5-pro"` by default. 
 
 ## Sync STT API (short-form audio, ≤120s)
 
-A separate synchronous endpoint for short clips — send audio in one HTTP request, get the transcript back in the response. **No polling, no transcript ID, no `upload` step.** Ideal for voice-message transcription, short call recordings, or voice-agent pipelines that do their own turn detection and submit completed utterances.
+A separate synchronous endpoint for short clips — send audio in one HTTP request, get the transcript back in the response. **No polling, no transcript ID, no `upload` step.** Fully launched (GA) July 14, 2026 at $0.45/hr. Ideal for voice-message transcription, short call recordings, or voice-agent pipelines that do their own turn detection and submit completed utterances.
 
-- **Endpoint:** `POST https://sync.assemblyai.com/transcribe` (global default — routes to nearest region; use `sync.us.assemblyai.com` / `sync.eu.assemblyai.com` for data residency)
-- **Required header:** `X-AAI-Model` — the current quickstart uses `universal-3-5-pro`; `u3-sync-pro` (Universal-3 Pro) is also accepted (the value in the formal spec enum)
+- **Endpoint:** `POST https://sync.assemblyai.com/v1/transcribe` (routes are versioned as of July 2026 — the unprefixed `/transcribe` still works for legacy clients, but new code should use `/v1/`). Global host routes to nearest region; use `sync.us.assemblyai.com` / `sync.eu.assemblyai.com` for data residency
+- **Required header:** `X-AAI-Model: universal-3-5-pro` (the only sync model in the SDKs; `u3-sync-pro` is a legacy accepted value)
 - **Auth:** `Authorization: YOUR_API_KEY` (Bearer prefix optional here, unlike the async REST API; or pass `?token=YOUR_API_KEY`)
 - **Body:** `multipart/form-data` with an `audio` part (`Content-Type: audio/wav` or `audio/pcm`) and an optional `config` JSON part
-- **`config` fields:** `prompt` (≤4096 chars), `word_boost` (string[], ≤2048 chars total — this is the documented keyterms param for Sync, *not* `keyterms_prompt`), `conversation_context` (string or string[] — prior conversation turns oldest-first, for continuity across a multi-turn conversation; oldest dropped when over the context budget), `language_code` (ISO 639-1 string or list, default `en` — steers the default prompt toward the named language(s); **ignored when a custom `prompt` is set**), and for `audio/pcm` also `sample_rate` + `channels` (required for raw PCM; WAV reads them from its header)
+- **`config` fields:** `prompt` (≤4096 chars), `keyterms_prompt` (string[] — **renamed from `word_boost` in July 2026**; the aliases `word_boost` and `keyterms` are still accepted), `conversation_context` (string or string[] — prior conversation turns oldest-first, for continuity across a multi-turn conversation; oldest dropped when over the context budget), `language_codes` (ISO 639-1 list; singular `language_code` also accepted, default `en` — steers the default prompt toward the named language(s); **ignored when a custom `prompt` is set**), `timestamps` (bool, default `false` — **opt-in** per-word `start`/`end` in ms via forced alignment; omitted from the response if the aligner is unavailable, never estimated), and for `audio/pcm` also `sample_rate` + `channels` (required for raw PCM; WAV reads them from its header). **Unknown `config` fields are rejected with a 400** — don't pass async-API params here
 - **Audio limits:** 80ms–120s, ≤40MB, 16-bit only, mono/stereo (stereo down-mixed), sample rates 8000/16000/22050/24000/32000/44100/48000 Hz
-- **Response:** `{ text, words[{text, start, end, confidence}], confidence, audio_duration_ms, session_id }` — word timestamps use `start`/`end` (integer milliseconds), same field names as the async API; only the clip-level `audio_duration_ms` carries the `_ms` suffix
+- **Response:** `{ text, words[{text, start?, end?, confidence}], confidence, audio_duration_ms, session_id, request_time_ms }` — word `start`/`end` (integer milliseconds) appear only when `timestamps: true`; only the clip-level durations carry the `_ms` suffix
+- **Pre-warming:** `GET https://sync.assemblyai.com/v1/warm` establishes the connection ahead of the first request (returns `200 {"warm":"toasty"}`). Python SDK: `SyncTranscriber.warm()` plus `aai.settings.keepalive_expiry` to hold the connection; Node SDK has `SyncTranscriber` too
 - **30s per-request deadline** (504 `inference_timeout`). For audio >120s use the async REST API; for live mic audio use Streaming.
 
 ```bash
-curl -X POST https://sync.assemblyai.com/transcribe \
+curl -X POST https://sync.assemblyai.com/v1/transcribe \
   -H 'Authorization: YOUR_API_KEY' \
   -H 'X-AAI-Model: universal-3-5-pro' \
   -F 'audio=@sample.wav;type=audio/wav'
@@ -125,42 +128,69 @@ See `references/llm-gateway.md` for models, tool calling, structured outputs, an
 
 ## Key Gotchas
 
+### Pre-Recorded / Async
+
 | Gotcha | Details |
 |--------|---------|
 | `prompt` + `keyterms_prompt` | **Complementary** for Universal-3.5 Pro — use either or both together. `prompt` is a contextual *description* of the audio; `keyterms_prompt` is an explicit term list. Neither changes output formatting |
+| `prompt` is context, not instructions | Universal-3.5 Pro's `prompt` *describes* the audio (domain/scenario/details). Formatting or behavioral commands (punctuation rules, "transcribe verbatim", negative directives like "don't…") are **not supported** and are ignored — transcription behavior is managed internally |
 | `summarization` / `auto_chapters` (top-level params) | **Deprecated.** Use **Speech Understanding** `summarization` (chaptered summary w/ timestamps + headlines) or `action_items` — `speech_understanding.request.<feature>` on `POST /v2/transcript` — or the LLM Gateway for fully custom prompts |
 | PII redaction scope | Only redacts words in `text` — other feature outputs (entities, summaries) may still expose sensitive data |
-| Upload key scoping | Files uploaded with one API key project cannot be transcribed with a different project's key |
-| Structured outputs | Supported by OpenAI, Gemini, Claude 4.5+, Qwen, and Kimi — Claude 3.x does NOT support `json_schema` structured outputs |
-| universal-3-5-pro turn detection | `universal-3-5-pro` uses punctuation (`.` `?` `!`), NOT confidence thresholds — `end_of_turn_confidence_threshold` has no effect (it applies only to Universal Streaming English/Multilingual) |
-| `prompt` is context, not instructions | Universal-3.5 Pro's `prompt` *describes* the audio (domain/scenario/details). Formatting or behavioral commands (punctuation rules, "transcribe verbatim", negative directives like "don't…") are **not supported** and are ignored — transcription behavior is managed internally |
+| PII location policies | `redact_pii_policies` now supports granular location types (July 2026): `location_address`, `location_address_street`, `location_city`, `location_state`, `location_country`, `location_zip`, `location_coordinate`. A full contiguous address is one `location_address` span; standalone fragments get their subtype |
 | PII audio redaction method | `override_audio_redaction_method: "silence"` replaces PII with silence instead of default beep |
+| Upload key scoping | Files uploaded with one API key project cannot be transcribed with a different project's key |
 | Language detection | Requires minimum 15 seconds of spoken audio for reliable results |
-| LLM Gateway EU region | Only Anthropic Claude and Google Gemini models available — OpenAI models are NOT supported in EU |
+| English localization | `language_detection_options.localization` accepts **only** `en_au` and `en_uk` (400 otherwise, max one per base language) and applies regional spelling; the response `language_code` then surfaces the applied locale (e.g. `en_au`) |
+| Sentiment analysis is English-only | For non-English audio the transcript completes normally but `sentiment_analysis_results` is **`null`** — no error is returned |
 | Disfluencies | Enable with `disfluencies: true` to keep "um"/"uh" in the transcript |
 | Medical Mode unsupported language | API silently skips Medical Mode and does not charge for it — check for warning in response |
-| Voice Agent API URL | The Voice Agent endpoint is `wss://agents.assemblyai.com/v1/ws` — NOT `/v1/voice` (renamed April 2026), `/v1/realtime` (older), or `speech-to-speech.us.assemblyai.com` (very old) |
-| Voice Agent `tool.call` field | The argument dict is named `arguments`, not `args` (renamed April 2026) |
-| Voice Agent stored agents (`agent_id`) | The first `session.update` either binds a reusable stored agent via `{"agent_id":"<id>"}` (the **only** field in `session`) OR sends inline config (`system_prompt`/`greeting`/`tools`/`input`/`output`) — the two modes are **mutually exclusive**; sending both raises a validation error. Create stored agents with `POST https://agents.assemblyai.com/v1/agents` |
-| Voice Agent turn detection fields | Use `min_silence` (default 1000ms) and `max_silence` (default 3000ms) under `session.input.turn_detection` — `min_turn_silence`/`max_turn_silence` are the streaming/LiveKit/Pipecat field names, not Voice Agent API. Both must be in `[50, 10000]` ms with `min_silence < max_silence`. Setting either explicitly disables adaptive endpointing for the rest of the session |
-| Voice Agent immutable fields | After `session.ready`, **immutable**: `greeting`, `output.voice`, `output.format` — changing them returns `immutable_field`. **Mutable**: `system_prompt`, `input.turn_detection`, `input.keyterms` (up to 100 strings), `output.volume` (0–100), `tools`, `input.format` |
-| Voice Agent greeting | The `greeting` is sent **straight to the TTS engine** — it is NOT passed through the LLM. Whatever string you set is exactly what the user hears, word for word. Don't write meta-greetings like "Greet the user warmly" — TTS will literally speak that |
-| Voice Agent hold-mode transcripts | While an `execution_mode: "hold"` tool is in flight, `transcript.user.delta` / `transcript.user` are NOT emitted in real time — they flush when the hold ends (on `tool.result` or `reply.create`) |
-| Voice Agent audio pacing | Don't stream audio faster than realtime — excess frames are dropped server-side |
-| Voice Agent session teardown billing | Just closing the WebSocket holds the session for 30s (resumable via `session.resume`) and **that grace window is billable**. Send `session.end` (`{"type":"session.end"}`) when the call is over to close immediately and stop billing — the server replies with a final `session.ended` (carrying `session_duration_seconds`, `audio_duration_seconds`) before closing the socket |
-| Streaming `format_turns` digit rendering | `format_turns=true` enables punctuation, casing, and inverse text normalization (dates, times, phone numbers) — it does **NOT** control digit rendering. Numerals like "22" are a model behavior, and lexical number output ("twenty-two") is not supported in streaming |
-| Streaming EU region | Moved from Ireland (eu-west-1) to Stockholm (eu-north-1) in March 2026. Endpoint host (`streaming.eu.assemblyai.com`) is unchanged |
-| LLM Gateway `tool_calls` location | `tool_calls` lives at `choices[i].message.tool_calls` (under `message`), NOT at `choices[i].tool_calls` (under `choice`). `content` is `null` when only tool_calls are present |
-| LLM Gateway `finish_reason` is provider-native | Don't branch tool-calling loops on `finish_reason == "tool_calls"` — the Gateway passes the provider's value through, so **Claude returns `tool_use`/`end_turn`** (OpenAI returns `tool_calls`/`stop`). Detect a tool call by the **presence of `message.tool_calls`**, not by `finish_reason` |
 | Transcript `metadata.warnings` | The `Transcript` response now includes an optional `metadata` object. When present, `metadata.warnings` is an array of `{message}` objects describing issues processed during transcription (e.g. Medical Mode skipped due to unsupported language). `metadata` is omitted entirely when there is nothing to report |
-| universal-3-5-pro streaming context carryover | On by default — the model carries prior finalized turns forward as context (per-session, up to `previous_context_n_turns` entries, server default `5`, range 0–100). Pass your agent's spoken reply via `agent_context` (connection-time query param to seed an opening greeting, or mid-stream via `UpdateConfiguration`; ≤1750 chars per value) so the model knows the question the user is answering. `universal-3-5-pro` only |
-| Streaming diarization revised labels | With `speaker_labels` enabled, a single `SpeakerRevision` message is emitted right before `Termination` (after you send `Terminate`), containing a `revisions` array of only the turns whose speaker labels changed (matched by `turn_order`). Text and word timestamps never change — only speaker assignments. Adds ~400ms latency at session close. Use it for the final, highest-quality attribution |
-| LLM Gateway `model_region: "global"` | Optional request field (only accepted value `"global"`) routes to the provider's global, non-region endpoints for lower cost. Live for Anthropic Claude now; Google Gemini 3 series coming soon. Omit for default in-region processing. **Effective July 1, 2026, in-region LLM Gateway requests cost 10% more** (provider pass-through, no AssemblyAI upcharge) — global routing keeps current pricing |
-| Streaming language selection | The connection param is **`language_codes`** (plural, a **list** e.g. `["en","es"]`) — there is no singular `language_code` *input* param. It steers output toward those languages while still allowing native code-switching. `universal-3-5-pro` only. (`language_code` appears only as an *output* field when `language_detection: true`.) |
-| Streaming Opus input | `encoding` accepts `opus` (raw packets — one per binary WS message) and `ogg_opus` (Ogg stream — arbitrary chunks; ffmpeg/gstreamer/MediaRecorder output), in addition to `pcm_s16le`/`pcm_mulaw`. For Opus, `sample_rate` is ignored (stream is self-describing) |
-| Voice Agent HTTP tool `headers` | Server-side HTTP tools take `headers` as a **list of `{name, value}` entries** (since June 2026), NOT a `{name: value}` dict. Reads return `{name, last_set_at}` only — values are write-only and never returned (not masked as `"***"`) |
-| Voice Agent BYO LLM (`llm`) | Set `llm` on a **stored agent** (REST create/update, not `session.update`) to run on your own OpenAI-compatible endpoint: `[{base_url, model, api_key}]` — one entry only, must stream, `api_key` write-only. `"llm": []` reverts to the managed model. Point `base_url` at the LLM Gateway to use a frontier model on your AssemblyAI account |
-| Voice Agent webhooks | Subscribe to Voice Agent events via `POST https://agents.assemblyai.com/v1/webhook-subscriptions` (events: `session.started`/`session.completed`/`call.connected`/`call.ended`/`call.failed`; scope with `agent_id` or omit for account-wide). See `references/api-reference.md` |
+
+### Streaming
+
+| Gotcha | Details |
+|--------|---------|
+| universal-3-5-pro turn detection | `universal-3-5-pro` uses punctuation (`.` `?` `!`), NOT confidence thresholds — `end_of_turn_confidence_threshold` has no effect (it applies only to Universal Streaming English/Multilingual) |
+| `speaker_labels` overrides `mode` | Enabling `speaker_labels: true` on universal-3-5-pro replaces the `mode` preset with a dedicated diarization turn-detection profile — `min_latency`/`balanced`/`max_accuracy` have **no effect** and **no warning is returned**. The profile caps turns at **10s** (force-finalized; a turn boundary is not a speaker change), slows partials to ~3s cadence (`continuous_partials: true` restores ~1s), and sets silence defaults to 640/768ms. Explicitly-set `min_turn_silence`/`max_turn_silence`/`vad_threshold`/`interruption_delay` still apply on top |
+| `format_turns` digit rendering | `format_turns=true` enables punctuation, casing, and inverse text normalization (dates, times, phone numbers) — it does **NOT** control digit rendering. Numerals like "22" are a model behavior, and lexical number output ("twenty-two") is not supported in streaming |
+| Language selection | The connection param is **`language_codes`** (plural, a **list**, max **10** codes per session, e.g. `["en","es"]`). Accepted codes now include `ru` and `ko` (added July 2026). Updatable **mid-stream** via `UpdateConfiguration` (applies from the next turn; `[]` clears steering back to native code-switching). The singular `language_code` connect param is **deprecated but still accepted** (read as a one-element list). Steering biases — it doesn't lock; the model still code-switches among the listed languages. `universal-3-5-pro` only |
+| Context carryover | On by default — the model carries prior finalized turns forward as context (per-session, up to `previous_context_n_turns` entries, server default `5`, range 0–100). Pass your agent's spoken reply via `agent_context` (connection-time query param to seed an opening greeting, or mid-stream via `UpdateConfiguration`; ≤1750 chars per value) so the model knows the question the user is answering. `universal-3-5-pro` only |
+| Diarization revised labels | With `speaker_labels` enabled, a single `SpeakerRevision` message is emitted right before `Termination` (after you send `Terminate`), containing a `revisions` array of only the turns whose speaker labels changed (matched by `turn_order`). Text and word timestamps never change — only speaker assignments. Adds ~400ms latency at session close. Use it for the final, highest-quality attribution |
+| Compressed audio input | `encoding` accepts `opus` (raw packets — one per binary WS message), `ogg_opus` (Ogg stream — arbitrary chunks; ffmpeg/gstreamer/MediaRecorder output), and `aac` (ADTS AAC, added July 2026), in addition to `pcm_s16le`/`pcm_mulaw`. For these compressed encodings `sample_rate` is optional/ignored (the stream is self-describing) — but still required for PCM (recent SDKs throw at construction if missing) |
+| Session heartbeat | Opt-in connection param `session_heartbeat=true` (July 2026) makes the server emit periodic `Heartbeat` messages with `total_audio_received_ms`, `total_duration_ms`, `realtime_factor` (1.0 = realtime ingest), and `max_speech_probability` — use it to detect pacing problems and dead sessions. Python SDK ≥0.64.32 / Node ≥4.36.4 |
+| Close codes without an Error frame | `1000`/`1006` close the socket **without** an `Error` message, so `on_error` never fires — handle cleanup in `on_close`. `1009` means a single WebSocket message exceeded the server's **128 KB** read limit |
+| EU region | Moved from Ireland (eu-west-1) to Stockholm (eu-north-1) in March 2026. Endpoint host (`streaming.eu.assemblyai.com`) is unchanged |
+
+### Voice Agent API
+
+| Gotcha | Details |
+|--------|---------|
+| API URL | The Voice Agent endpoint is `wss://agents.assemblyai.com/v1/ws` — NOT `/v1/voice` (renamed April 2026), `/v1/realtime` (older), or `speech-to-speech.us.assemblyai.com` (very old) |
+| `tool.call` field | The argument dict is named `arguments`, not `args` (renamed April 2026) |
+| Stored agents (`agent_id`) | The first `session.update` either binds a reusable stored agent via `{"agent_id":"<id>"}` or sends inline config (`system_prompt`/`greeting`/`tools`/`input`/`output`). **As of July 2026 the two are no longer strictly exclusive**: a stored-agent session accepts `session.update` overrides for the mutable fields (`system_prompt`, `tools`, `input`) — the old `agent_id_no_overrides` error is gone. Still bootstrap-only: `greeting`, `output.voice`/`format`, `llm`, and HTTP-tool secrets. Create stored agents with `POST https://agents.assemblyai.com/v1/agents` |
+| Turn detection fields | Use `min_silence` (default 1000ms) and `max_silence` (default 3000ms) under `session.input.turn_detection` — `min_turn_silence`/`max_turn_silence` are the streaming/LiveKit/Pipecat field names, not Voice Agent API. Both must be in `[50, 10000]` ms with `min_silence < max_silence`. Setting either explicitly disables adaptive endpointing for the rest of the session. Since August 2026 these stored-agent settings are honored on **telephony calls** too (previously ignored on phone calls) |
+| Session-level STT tuning | `session.input` (type `audio`) now also takes `transcription_mode` (`balanced`/`min_latency`/`max_accuracy`), `continuous_partials` (bool), `transcription_prompt` (≤1750 chars — STT vocabulary context, distinct from `system_prompt`), `language_codes`, `voice_focus`/`voice_focus_threshold` (noise suppression), and `turn_detection.interruption_delay` (all added July 2026; updatable mid-call via `session.update`) |
+| Immutable fields | After `session.ready`, **immutable**: `greeting`, `output.voice`, `output.format` — changing them returns `immutable_field`. **Mutable**: `system_prompt`, `input.turn_detection`, `input.keyterms` (up to 100 strings), `input.transcription_mode`/`continuous_partials`/`transcription_prompt`/`language_codes`, `output.volume` (0–100), `tools`, `input.format` |
+| Greeting | The `greeting` is sent **straight to the TTS engine** — it is NOT passed through the LLM. Whatever string you set is exactly what the user hears, word for word. Don't write meta-greetings like "Greet the user warmly" — TTS will literally speak that |
+| Transcript delta events | `transcript.user.delta` carries the **cumulative** running partial for the current user turn — render the latest one, don't concatenate. `transcript.agent.delta` (July 2026) streams the agent's own words for live captions |
+| Hold-mode transcripts | While an `execution_mode: "hold"` tool is in flight, `transcript.user.delta` / `transcript.user` are NOT emitted in real time — they flush when the hold ends (on `tool.result` or `reply.create`) |
+| Tool results | `tool.result` accepts an **`is_error`** boolean (default false) so the agent knows the call failed; tools can define `response_instructions` (`{success, error}` strings) to steer how the agent voices each outcome |
+| Built-in tools | `GET https://agents.assemblyai.com/v1/builtin-tools` lists platform tools (currently `aai_credit_card_luhn_check`); attach one by passing its `name` in `tools[]`. The `aai_` name prefix is **reserved** — custom tools can't use it |
+| Audio pacing | Don't stream audio faster than realtime — excess frames are dropped server-side |
+| Session teardown billing | Just closing the WebSocket holds the session for 30s (resumable via `session.resume`) and **that grace window is billable**. Send `session.end` (`{"type":"session.end"}`) when the call is over to close immediately and stop billing — the server replies with a final `session.ended` (carrying `session_duration_seconds`, `audio_duration_seconds`) before closing the socket |
+| HTTP tool `headers` | Server-side HTTP tools take `headers` as a **list of `{name, value}` entries** (since June 2026), NOT a `{name: value}` dict. Reads return `{name, last_set_at}` only — values are write-only and never returned (not masked as `"***"`). Tool URLs must be **https**; `timeout_seconds` is 1–300 (default 120) |
+| BYO LLM (`llm`) | Set `llm` on a **stored agent** (REST create/update, not `session.update`) to run on your own OpenAI-compatible endpoint: `[{base_url, model, api_key}]` — one entry only, must stream, `api_key` write-only. `"llm": []` reverts to the managed model. Point `base_url` at the LLM Gateway to use a frontier model on your AssemblyAI account |
+| Session history & webhooks | The **Sessions API** (`GET /v1/sessions`, get/delete by id — includes the recording and conversation timeline; filter by `status`/`agent_id`, cursor-paged, limit 1–200) is the documented way to retrieve past sessions. Webhook subscriptions also exist: `POST https://agents.assemblyai.com/v1/webhook-subscriptions` (events: `session.started`/`session.completed`/`call.connected`/`call.ended`/`call.failed`; scope with `agent_id` or omit for account-wide). See `references/api-reference.md` |
+
+### LLM Gateway
+
+| Gotcha | Details |
+|--------|---------|
+| Structured outputs | Supported by OpenAI (GPT-4.1/5.x), Gemini, Claude 4.5+, and Qwen. **NOT supported:** Claude 3.x, `gpt-oss` models, and **`claude-sonnet-5` at launch** (July 2026) — use tool calling or prompting there. Optional `post_processing_steps: [{"type": "json-repair"}]` repairs near-miss JSON |
+| `tool_calls` location | `tool_calls` lives at `choices[i].message.tool_calls` (under `message`), NOT at `choices[i].tool_calls` (under `choice`). `content` is `null` when only tool_calls are present |
+| `finish_reason` is provider-native | Don't branch tool-calling loops on `finish_reason == "tool_calls"` — the Gateway passes the provider's value through, so **Claude returns `tool_use`/`end_turn`** (OpenAI returns `tool_calls`/`stop`). Detect a tool call by the **presence of `message.tool_calls`**, not by `finish_reason` |
+| `model_region: "global"` | Optional request field (only accepted value `"global"`) routes to the provider's global, non-region endpoints at provider list price — now live for **Claude, Gemini, and OpenAI** models. Omit for default in-region processing; the US/EU data-residency tiers cost ~10% more than the global tier (provider pass-through, no AssemblyAI upcharge, since July 1, 2026) |
+| EU region | Only Anthropic Claude and Google Gemini models available — OpenAI models are NOT supported in EU |
 
 ## Common Mistakes
 
@@ -171,12 +201,14 @@ See `references/llm-gateway.md` for models, tool calling, structured outputs, an
 | Using top-level `summarization` or `auto_chapters` | **Deprecated.** Use Speech Understanding `summarization`/`action_items` (`speech_understanding.request.<feature>`) or the LLM Gateway |
 | LeMUR `transcript_ids` with LLM Gateway | Pass transcript text in messages, not IDs |
 | `anthropic/claude-...` model IDs | No provider prefix: `claude-sonnet-4-5-20250929` not `anthropic/claude-sonnet-4-5-20250929` |
-| `claude-opus-4-20250514` / `claude-sonnet-4-20250514` on LLM Gateway | **Removed June 2026.** Use Claude Opus 4.5/4.6/4.7 or Claude Sonnet 4.5/4.6 |
+| `claude-opus-4-20250514` / `claude-sonnet-4-20250514` on LLM Gateway | **Removed June 2026.** Use Claude Opus 4.5/4.6/4.7, Claude Sonnet 4.5/4.6, or Claude Sonnet 5 (`claude-sonnet-5`, added July 2026) |
+| `kimi-k2.5` on LLM Gateway | **Removed August 2026** — Moonshot AI Kimi models are no longer available on the Gateway |
+| `gemini-3-flash-preview` / `gemini-3.1-flash-lite-preview` on LLM Gateway | **Removed July 2026.** Use `gemini-3.5-flash`, `gemini-3.6-flash`, or `gemini-3.5-flash-lite` |
 | Uploading to `/v2/upload` with `-d`/`--data` or a JSON body | Use `--data-binary @file` (raw bytes). `-d`/JSON returns a valid `upload_url` but transcription later fails with `Transcoding failed. File type application/json` |
 | Using Java/Go/C# SDKs | **Discontinued.** Use Python, JS/TS, Ruby, or raw API |
-| `word_boost` on the async REST API | Use `keyterms_prompt` instead. **Exception:** the Sync STT API *does* use `word_boost` (in its `config` part) — that's its documented keyterms param |
+| `word_boost` anywhere | Use `keyterms_prompt` instead — on the async REST API *and* now the Sync STT API, which renamed its `word_boost` config param to `keyterms_prompt` in July 2026 (legacy aliases `word_boost`/`keyterms` still accepted on Sync) |
 | Hardcoding v2 streaming URL | v3 (`/v3/ws`) is current; v2 still works but is legacy |
-| Using `speech_model=u3-rt-pro` for streaming | **Removed July 2026** from the model picker and streaming spec enum — superseded by `universal-3-5-pro` (the streaming default). Set a different model only for cost tradeoffs (`universal-streaming-english`/`-multilingual`) |
+| Using `speech_model=u3-rt-pro` for streaming | **Removed July 2026** from the model picker and streaming spec enum — superseded by `universal-3-5-pro` (the streaming default). From **September 2, 2026** `u3-rt-pro` connections are silently redirected to `universal-3-5-pro`. Set a different model only for cost tradeoffs (`universal-streaming-english`/`-multilingual`) |
 | Python SDK rejects `universal-3-5-pro` | Upgrade to `assemblyai>=0.64.21` for Streaming v3 SDK support. Older SDKs such as `0.64.4` validate `speech_model` against an enum that omits `universal-3-5-pro` |
 | `aai.SpeechModel.universal_3_5_pro` in Python SDK | Use raw strings: `"universal-3-5-pro"`, `"universal-2"` — these enum aliases don't exist in the SDK |
 | S2S `session.update` without `"session"` key | Must wrap config: `{"type":"session.update","session":{...}}` |
@@ -201,9 +233,9 @@ Read the relevant reference file based on what the user needs:
 | `references/streaming.md` | Real-time/streaming STT, v3 protocol, temp tokens, error codes |
 | `references/voice-agents.md` | Voice agent integrations: LiveKit, Pipecat, turn detection, latency optimization |
 | `references/llm-gateway.md` | Applying LLMs to transcripts, tool calling, available models |
-| `references/speech-understanding.md` | Translation, speaker identification, custom formatting, summarization, action items |
-| `references/audio-intelligence.md` | PII redaction, diarization, summarization, sentiment, chapters |
-| `references/api-reference.md` | Full parameter list, export endpoints, webhooks, upload, PII policies, Sync STT API, Voice Agents REST API (stored agents, HTTP-tool headers, BYO LLM, webhook subscriptions) |
+| `references/speech-understanding.md` | Translation, speaker identification, custom formatting, summarization, action items (docs now group most transcript-analysis features here) |
+| `references/audio-intelligence.md` | PII redaction, diarization, sentiment, entity detection, topics — docs re-homed these under Speech Understanding & Guardrails, but the top-level request params are unchanged |
+| `references/api-reference.md` | Full parameter list, export endpoints, webhooks, upload, PII policies, Sync STT API, Voice Agents REST API (stored agents, sessions, built-in tools, HTTP-tool headers, BYO LLM, webhook subscriptions) |
 
 ## API Spec Source of Truth
 

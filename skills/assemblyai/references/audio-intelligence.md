@@ -2,6 +2,8 @@
 
 All Audio Intelligence features are enabled via boolean parameters on the `POST /v2/transcript` request.
 
+> **Docs reorganization (July 2026):** the docs no longer have a standalone "Audio Intelligence" section — these features now live under **Speech Understanding** (sentiment, entities, key phrases, topics) and **Guardrails** (PII redaction, content moderation, profanity filtering, `speech_threshold`). The request params below are unchanged.
+
 ## Speaker Diarization
 
 - Enable with `speaker_labels: true`
@@ -35,6 +37,7 @@ All Audio Intelligence features are enabled via boolean parameters on the `POST 
 - Enable with `sentiment_analysis: true`
 - Response includes `sentiment_analysis_results` array
 - Each result has `text`, `sentiment` (POSITIVE/NEGATIVE/NEUTRAL), `confidence`, `speaker`
+- **English-only:** for non-English audio the transcript completes normally but `sentiment_analysis_results` is `null` — no error is returned
 
 ## Entity Detection
 

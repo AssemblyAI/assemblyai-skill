@@ -12,9 +12,9 @@ The LLM Gateway is an OpenAI-compatible API provided by AssemblyAI for applying 
 
 **EU Region Limitation:** Only Anthropic Claude and Google Gemini models are available in the EU region. OpenAI (GPT) models are **not** supported in EU.
 
-**Global routing (lower cost):** Add the optional request field `"model_region": "global"` to route a request to the provider's global, non-region endpoints for lower-cost processing. The only accepted value is `"global"`; omit the field for default in-region processing. Currently live for Anthropic Claude models, with Google Gemini 3 series coming soon. Use it when you have **no** data residency, compliance, or latency requirements and want cheaper calls. It layers on top of the default (US) endpoint.
+**Global routing (lower cost):** Add the optional request field `"model_region": "global"` to route a request to the provider's global, non-region endpoints for lower-cost processing. The only accepted value is `"global"`; omit the field for default in-region processing. Live for **Anthropic Claude, Google Gemini, and OpenAI** models (extended from Claude-only in July 2026). Use it when you have **no** data residency, compliance, or latency requirements and want cheaper calls. It layers on top of the default (US) endpoint.
 
-> **Price change:** Effective **July 1, 2026**, in-region LLM Gateway requests cost **10% more** — a direct pass-through of provider price increases, with no AssemblyAI upcharge. Opting into global routing keeps current pricing.
+> **Pricing tiers:** Since **July 1, 2026** the global tier is priced at the provider's list price, while the US and EU data-residency tiers cost **~10% more** — a direct pass-through, with no AssemblyAI upcharge. The `GET /v1/models` response reports each model's per-tier pricing and `regional_increase_percent`.
 
 **Authentication:**
 - Header: `Authorization: API_KEY`
@@ -30,6 +30,7 @@ Model IDs have NO provider prefix (e.g., use `claude-sonnet-4-5-20250929`, not `
 
 | Model | ID |
 |-------|----|
+| Claude Sonnet 5 (added July 2026) | `claude-sonnet-5` |
 | Claude Opus 4.7 | `claude-opus-4-7` |
 | Claude Opus 4.6 | `claude-opus-4-6` |
 | Claude Sonnet 4.6 | `claude-sonnet-4-6` |
@@ -40,12 +41,14 @@ Model IDs have NO provider prefix (e.g., use `claude-sonnet-4-5-20250929`, not `
 | Claude Sonnet 4 ⚠️ **removed June 2026** | `claude-sonnet-4-20250514` |
 | Claude 3.0 Haiku ⚠️ **retired** | `claude-3-haiku-20240307` |
 
-`claude-opus-4-20250514` and `claude-sonnet-4-20250514` were removed from the LLM Gateway's available-models list in June 2026 — don't suggest them. Use Claude Opus 4.5/4.6/4.7 or Claude Sonnet 4.5/4.6 instead.
+`claude-opus-4-20250514` and `claude-sonnet-4-20250514` were removed from the LLM Gateway's available-models list in June 2026 — don't suggest them. Use Claude Sonnet 5, Claude Opus 4.5/4.6/4.7, or Claude Sonnet 4.5/4.6 instead. Note: **`claude-sonnet-5` does not support structured outputs at launch** — use tool calling or prompting with it. Claude Opus 4.5 and 4.6 support context windows under 200k tokens via the Gateway.
 
 ### OpenAI (GPT)
 
 | Model | ID |
 |-------|----|
+| GPT-5.6 Luna (added July 2026) | `gpt-5.6-luna` |
+| GPT-5.6 Terra (added July 2026) | `gpt-5.6-terra` |
 | GPT-5.5 | `gpt-5.5` |
 | GPT-5.2 | `gpt-5.2` |
 | GPT-5.1 | `gpt-5.1` |
@@ -56,16 +59,20 @@ Model IDs have NO provider prefix (e.g., use `claude-sonnet-4-5-20250929`, not `
 | gpt-oss-120b | `gpt-oss-120b` |
 | gpt-oss-20b | `gpt-oss-20b` |
 
+Both GPT-5.6 variants support prompt caching.
+
 ### Google (Gemini)
 
 | Model | ID |
 |-------|----|
+| Gemini 3.6 Flash (added July 2026) | `gemini-3.6-flash` |
 | Gemini 3.5 Flash | `gemini-3.5-flash` |
-| Gemini 3 Flash Preview | `gemini-3-flash-preview` |
-| Gemini 3.1 Flash Lite Preview ⚠️ US-only | `gemini-3.1-flash-lite-preview` |
+| Gemini 3.5 Flash-Lite (added July 2026) | `gemini-3.5-flash-lite` |
 | Gemini 2.5 Pro | `gemini-2.5-pro` |
 | Gemini 2.5 Flash | `gemini-2.5-flash` |
 | Gemini 2.5 Flash-Lite | `gemini-2.5-flash-lite` |
+| Gemini 3 Flash Preview ⚠️ **removed July 2026** | `gemini-3-flash-preview` |
+| Gemini 3.1 Flash Lite Preview ⚠️ **removed July 2026** | `gemini-3.1-flash-lite-preview` |
 
 ### Alibaba (Qwen)
 
@@ -74,11 +81,11 @@ Model IDs have NO provider prefix (e.g., use `claude-sonnet-4-5-20250929`, not `
 | Qwen3 Next 80B | `qwen3-next-80b-a3b` |
 | Qwen3 32B | `qwen3-32B` |
 
-### Moonshot AI (Kimi)
+### Moonshot AI (Kimi) — removed
 
-| Model | ID |
-|-------|----|
-| Kimi K2.5 | `kimi-k2.5` |
+`kimi-k2.5` was **removed in August 2026**; no Kimi models remain on the Gateway. (Mistral models were sunsetted earlier.)
+
+The `GET /v1/models` list endpoint is the authoritative live catalog — since July 2026 each entry also carries a `pricing` object (`global` plus optional `us`/`eu` tiers: `prompt`, `completions`, `input_cache_read`, `input_cache_write`, `input_cache_write_1h`, and `regional_increase_percent`), a human-readable `name`, `creator`, and a `retirement_date` (unix timestamp) when one is scheduled.
 
 ---
 
@@ -97,7 +104,7 @@ Supports:
 - `transcript_id` — top-level field that injects a transcript's text into the prompt (see [Inject a Transcript by ID](#inject-a-transcript-by-id) below)
 - `post_processing_steps` — ordered server-side fixes applied after generation. Currently supports `{"type": "json-repair"}` to automatically fix malformed JSON in content and tool call arguments
 - `reasoning` — control reasoning behavior for supported models (see [Reasoning](#reasoning) below)
-- `model_region` — set to `"global"` to opt into global routing for lower-cost processing (Claude now, Gemini 3 coming soon). Omit for default in-region processing. See [Global routing](#overview) above.
+- `model_region` — set to `"global"` to opt into global routing for lower-cost processing (Claude, Gemini, and OpenAI models). Omit for default in-region processing. See [Global routing](#overview) above.
 
 ### Inject a Transcript by ID
 
@@ -430,7 +437,7 @@ The model will call `get_weather` for each city in separate iterations, then pro
 
 Use the `response_format` parameter with `type: "json_schema"` to get structured JSON responses that conform to a specific schema.
 
-**Supported models:** OpenAI (GPT-4.1, GPT-5.x), Gemini, Claude (4.5+), Alibaba Cloud Qwen, Moonshot AI Kimi. **NOT supported:** `gpt-oss` models, Claude 3.x models. For unsupported models, instruct via system prompt instead.
+**Supported models:** OpenAI (GPT-4.1, GPT-5.x), Gemini, Claude (4.5+), Alibaba Cloud Qwen. **NOT supported:** `gpt-oss` models, Claude 3.x models, and **`claude-sonnet-5` at launch** (July 2026). For unsupported models, instruct via system prompt instead — or add `post_processing_steps: [{"type": "json-repair"}]` to repair near-miss JSON.
 
 The `json_schema.strict` field **defaults to `false`** — set it to `true` (as in the examples below) to enforce strict schema adherence.
 
