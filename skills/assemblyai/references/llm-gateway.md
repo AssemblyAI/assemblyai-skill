@@ -135,7 +135,7 @@ curl https://llm-gateway.assemblyai.com/v1/chat/completions \
   -H "Authorization: YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "claude-sonnet-4-5-20250929",
+    "model": "claude-sonnet-4-6",
     "messages": [
       {
         "role": "system",
@@ -160,7 +160,7 @@ headers = {
     "Content-Type": "application/json",
 }
 data = {
-    "model": "claude-sonnet-4-5-20250929",
+    "model": "claude-sonnet-4-6",
     "messages": [
         {"role": "system", "content": "You are a helpful assistant."},
         {"role": "user", "content": "Summarize this transcript:\n\n" + transcript_text},
@@ -184,7 +184,7 @@ const response = await fetch(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "claude-sonnet-4-5-20250929",
+      model: "claude-sonnet-4-6",
       messages: [
         { role: "system", content: "You are a helpful assistant." },
         { role: "user", content: `Summarize this transcript:\n\n${transcriptText}` },
@@ -204,7 +204,7 @@ console.log(result.choices[0].message.content);
   "id": "chatcmpl-abc123",
   "object": "chat.completion",
   "created": 1711000000,
-  "model": "claude-sonnet-4-5-20250929",
+  "model": "claude-sonnet-4-6",
   "choices": [
     {
       "index": 0,
@@ -261,7 +261,7 @@ The LLM Gateway supports tool (function) calling. Define tools in the `tools` ar
 
 ```json
 {
-  "model": "claude-sonnet-4-5-20250929",
+  "model": "claude-sonnet-4-6",
   "messages": [
     {"role": "user", "content": "What is the weather in San Francisco?"}
   ],
@@ -331,7 +331,7 @@ After executing the tool, pass the result back using the `tool` role with `tool_
 
 ```json
 {
-  "model": "claude-sonnet-4-5-20250929",
+  "model": "claude-sonnet-4-6",
   "messages": [
     {"role": "user", "content": "What is the weather in San Francisco?"},
     {
@@ -406,7 +406,7 @@ for i in range(max_iterations):
     response = requests.post(
         url,
         headers=headers,
-        json={"model": "claude-sonnet-4-5-20250929", "messages": messages, "tools": tools},
+        json={"model": "claude-sonnet-4-6", "messages": messages, "tools": tools},
     )
     result = response.json()
     choice = result["choices"][0]
@@ -684,7 +684,7 @@ llm_response = requests.post(
     "https://llm-gateway.assemblyai.com/v1/chat/completions",
     headers={"Authorization": API_KEY, "Content-Type": "application/json"},
     json={
-        "model": "claude-sonnet-4-5-20250929",
+        "model": "claude-sonnet-4-6",
         "messages": [
             {
                 "role": "system",
@@ -723,7 +723,7 @@ llm_response = requests.post(
     "https://llm-gateway.assemblyai.com/v1/chat/completions",
     headers={"Authorization": aai.settings.api_key, "Content-Type": "application/json"},
     json={
-        "model": "claude-sonnet-4-5-20250929",
+        "model": "claude-sonnet-4-6",
         "messages": [
             {"role": "system", "content": "Summarize the following transcript."},
             {"role": "user", "content": transcript.text},

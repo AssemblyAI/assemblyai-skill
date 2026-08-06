@@ -207,16 +207,24 @@ for result in transcript.content_safety.results:
 
 ### Summarization
 
+The top-level `summarization=True` param is **deprecated**. Use Speech Understanding summarization instead — the SDK's `TranscriptionConfig` accepts the `speech_understanding` object directly (SDK ≥0.64.x), so you do NOT need to drop to raw REST for this:
+
 ```python
 config = aai.TranscriptionConfig(
-    summarization=True,
-    summary_model=aai.SummarizationModel.informative,
-    summary_type=aai.SummarizationType.bullets,
+    speaker_labels=True,
+    speech_understanding={
+        "request": {
+            "summarization": {"summary_type": "bullets", "effort": "low"},
+        }
+    },
 )
 transcript = transcriber.transcribe("https://example.com/audio.mp3", config=config)
 
-print(transcript.summary)
+su = transcript.json_response.get("speech_understanding", {})
+print(su.get("response", {}).get("summarization", {}).get("summary"))
 ```
+
+Typed request models exist too (`aai.types.SpeechUnderstandingRequest`). For fully custom summaries, use the LLM Gateway (section 9).
 
 > **Note:** `summarization` and `auto_chapters` are mutually exclusive. Do not enable both in the same config.
 
@@ -315,7 +323,7 @@ response = requests.post(
         "Content-Type": "application/json",
     },
     json={
-        "model": "claude-sonnet-4-20250514",
+        "model": "claude-sonnet-4-6",
         "messages": [
             {
                 "role": "user",

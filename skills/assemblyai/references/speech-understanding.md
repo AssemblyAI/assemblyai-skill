@@ -8,7 +8,7 @@ Speech Understanding provides post-transcription intelligence: **Translation, Sp
 
 Two ways to run it:
 
-1. **Inline during transcription** — include the `speech_understanding` object in the `POST /v2/transcript` body. Results come back when the transcript completes.
+1. **Inline during transcription** — include the `speech_understanding` object in the `POST /v2/transcript` body. Results come back when the transcript completes. Both current SDKs pass it through directly — Python `aai.TranscriptionConfig(speech_understanding={...})` (≥0.64.x, typed models in `aai.types`), JS `client.transcripts.transcribe({ speech_understanding: {...} })` — so no raw REST needed.
 2. **Post-hoc on an existing transcript** — `POST https://llm-gateway.assemblyai.com/v1/understanding` (EU: `https://llm-gateway.eu.assemblyai.com/v1/understanding`) with a `transcript_id`.
 
 Auth header: `Authorization: API_KEY` (no `Bearer` prefix).

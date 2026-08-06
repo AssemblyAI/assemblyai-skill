@@ -158,15 +158,20 @@ for (const chapter of transcript.chapters!) {
 
 ### Summarization
 
+The top-level `summarization: true` param is **deprecated**. Use Speech Understanding summarization instead — the SDK's transcript params accept `speech_understanding` directly, so you do NOT need raw fetch for this:
+
 ```typescript
 const transcript = await client.transcripts.transcribe({
   audio: "https://example.com/audio.mp3",
-  summarization: true,
-  summary_model: "informative", // "informative", "conversational", "catchy"
-  summary_type: "bullets",      // "bullets", "bullets_verbose", "gist", "headline", "paragraph"
+  speaker_labels: true,
+  speech_understanding: {
+    request: {
+      summarization: { summary_type: "bullets", effort: "low" },
+    },
+  },
 });
 
-console.log(transcript.summary);
+console.log(transcript.speech_understanding?.response?.summarization?.summary);
 ```
 
 ### Content safety
@@ -296,7 +301,7 @@ const response = await fetch(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "claude-sonnet-4-5-20250929",
+      model: "claude-sonnet-4-6",
       messages: [
         { role: "user", content: "Summarize this transcript..." },
       ],
