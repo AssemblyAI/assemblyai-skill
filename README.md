@@ -87,6 +87,34 @@ skills/
         └── api-reference.md          # Full API parameters, endpoints, webhooks
 ```
 
+## Testing code blocks
+
+The repo includes a pytest suite that collects every fenced code block in `README.md` and `skills/**/*.md`.
+
+Run the offline checks:
+
+```bash
+python -m pytest -m codeblocks
+```
+
+Offline mode does not call AssemblyAI. It parses JSON blocks, compiles Python blocks, checks shell blocks with `bash -n`, syntax-checks JavaScript/TypeScript blocks with Node, and counts plain/Markdown fences.
+
+Run live API checks:
+
+```bash
+ASSEMBLYAI_API_KEY=your_key ASSEMBLYAI_RUN_LIVE_CODEBLOCKS=1 python -m pytest -m codeblocks
+```
+
+Live mode executes examples that can run as standalone AssemblyAI API calls. It rewrites `YOUR_API_KEY`, `https://example.com/audio.mp3`, and local audio placeholders to use environment-backed test values. Context-dependent LiveKit, Pipecat, and telephony fragments are still compiled, but not live-executed outside their host app.
+
+Optional live-mode overrides:
+
+```bash
+ASSEMBLYAI_TEST_AUDIO_URL=https://example.com/short-audio.mp3
+ASSEMBLYAI_TEST_AUDIO_FILE=/path/to/sample.wav
+ASSEMBLYAI_CODEBLOCK_TIMEOUT=300
+```
+
 ## Eval results
 
 The `assemblyai-workspace/` directory contains test results comparing skill vs. no-skill outputs across three scenarios:
