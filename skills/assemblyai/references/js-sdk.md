@@ -1,10 +1,12 @@
 # AssemblyAI JavaScript/TypeScript SDK Reference
 
 ```bash
-npm i assemblyai@^4.37.0
+npm i assemblyai@^4.37.1
 ```
 
-**Target `>=4.37.0`** (4.37.1 is current, Sept 1, 2026). Requires Node `>=18`. This is the counterpart to the Python SDK's `>=1.0.0` floor: the two SDKs version independently, so the matched release is the one carrying the same change — **4.37.0 removed LeMUR** (`client.lemur`, `LemurService`, and every Lemur request/response type), as Python 1.0.0 did. Nothing else broke — no renames, no signature changes — so upgrading from 4.36.x is a drop-in unless you called `client.lemur`.
+**4.37.1 is the latest release (Sept 1, 2026).** Install it, or `npm i assemblyai@latest` for whatever is newest if you are reading this later. Requires Node `>=18`. The matched Python version is `assemblyai>=1.1.0`, which shipped the same day.
+
+The oldest release with the current API surface is **4.37.0** (Aug 28, 2026), which **removed LeMUR** (`client.lemur`, `LemurService`, and every Lemur request/response type) — the counterpart to Python 1.0.0 doing the same. Nothing else broke in it: no renames, no signature changes, so upgrading from 4.36.x is a drop-in unless you called `client.lemur`.
 
 Auth header format: `Authorization: KEY` (no Bearer prefix).
 

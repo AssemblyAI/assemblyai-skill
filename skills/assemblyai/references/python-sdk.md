@@ -3,10 +3,12 @@
 ## Installation
 
 ```bash
-pip install "assemblyai>=1.0.0"
+pip install "assemblyai>=1.1.0"
 ```
 
-**Target 1.x.** 1.0.0 shipped Aug 14, 2026; 1.1.0 is current (Sept 1, 2026). Most 0.x code runs on 1.x unchanged, but four things were removed or renamed — see §13 for the full migration. The matched JS/TS floor is `assemblyai@^4.37.0`.
+**1.1.0 is the latest release (Sept 1, 2026).** Install it, or `pip install -U assemblyai` for whatever is newest if you are reading this later. The matched JS/TS version is `assemblyai@^4.37.1`, which shipped the same day.
+
+Most 0.x code runs on 1.x unchanged, but four things were removed or renamed in 1.0.0 (Aug 14, 2026) — see §13 for the full migration. 1.0.0 is the oldest release with the current API surface; anything on 0.x is a different SDK generation.
 
 ## Authentication
 

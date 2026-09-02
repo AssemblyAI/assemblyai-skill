@@ -71,7 +71,7 @@
         {"text": "Does NOT install assemblyai[extras] — the extra was removed in Python SDK 1.0.0", "type": "semantic"},
         {"text": "Captures microphone PCM itself (pyaudio, sounddevice, or equivalent) and passes 16-bit PCM chunks to the transcriber's stream() method", "type": "semantic"},
         {"text": "Sets speech_model to universal-3-5-pro and passes sample_rate explicitly (required for PCM)", "type": "semantic"},
-        {"text": "If it pins a version, pins assemblyai>=1.0.0 rather than a 0.64.x release", "type": "semantic"}
+        {"text": "If it pins a version, pins the current assemblyai>=1.1.0 (or at minimum >=1.0.0) rather than a 0.64.x release", "type": "semantic"}
       ]
     }
   ]
