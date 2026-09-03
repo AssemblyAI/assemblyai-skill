@@ -1,8 +1,27 @@
 # AssemblyAI JavaScript/TypeScript SDK Reference
 
-SDK: `npm i assemblyai`
+```bash
+npm i assemblyai@^4.37.1
+```
+
+**4.37.1 is the latest release (Sept 1, 2026).** Install it, or `npm i assemblyai@latest` for whatever is newest if you are reading this later. Requires Node `>=18`. The matched Python version is `assemblyai>=1.1.0`, which shipped the same day.
+
+The oldest release with the current API surface is **4.37.0** (Aug 28, 2026), which **removed LeMUR** (`client.lemur`, `LemurService`, and every Lemur request/response type) — the counterpart to Python 1.0.0 doing the same. Nothing else broke in it: no renames, no signature changes, so upgrading from 4.36.x is a drop-in unless you called `client.lemur`.
 
 Auth header format: `Authorization: KEY` (no Bearer prefix).
+
+Recent additions worth knowing about, newest first:
+
+| Version | Change |
+|---------|--------|
+| 4.37.1 | `universal-3-6-pro` added to `StreamingSpeechModel`. Not yet in the public docs or model picker — keep using `universal-3-5-pro` |
+| 4.37.0 | **LeMUR removed.** Use the LLM Gateway (§9) |
+| 4.36.7 | `StreamingTranscriber.close()` no longer hangs when the socket closes without a `Termination` message; new optional `terminationTimeout` argument on `close()` (5000ms default, `0` waits indefinitely) |
+| 4.36.6 | `effort` (`"low"` \| `"medium"`) on the Speech Understanding feature requests |
+| 4.36.4 | `aac` streaming encoding; opt-in `sessionHeartbeat` streaming param with a `heartbeat` event |
+| 4.36.3 | Targets the canonical `/v1` sync API routes |
+| 4.36.2 | Opt-in `timestamps` sync config option (`SyncWord.start`/`end` are optional and absent unless requested) |
+| 4.36.0 | `client.sync` — synchronous transcription (§10) |
 
 ---
 
@@ -37,11 +56,12 @@ for (const utterance of transcript.utterances!) {
 
 ### With speech model fallback
 
+`speech_models` is a priority list — if the first model cannot process the audio, the next one is used. The singular `speech_model` field rejects current model names with a 400 (its TypeScript union still lists only the legacy `best`/`nano`/`slam-1`/`universal` values), so use the plural field:
+
 ```typescript
 const transcript = await client.transcripts.transcribe({
   audio: "https://example.com/audio.mp3",
-  speech_model: "nano",
-  // Falls back to "best" if nano is unavailable for the detected language
+  speech_models: ["universal-3-5-pro", "universal-2"],
 });
 ```
 
@@ -285,6 +305,8 @@ await transcriber.connect();
 // await transcriber.close();
 ```
 
+`close()` waits for the server's `Termination` message. Since 4.36.7 that wait is bounded: the signature is `close(waitForSessionTermination = true, terminationTimeout = 5000)`, with `terminationTimeout` in milliseconds and `0` meaning wait indefinitely. The socket closes either way.
+
 ---
 
 ## 9. LLM Gateway
@@ -317,7 +339,7 @@ console.log(data.choices[0].message.content);
 
 ## 10. Sync STT (Short-Form Audio, ≤120s)
 
-`client.sync` (SDK ≥4.36) is a `SyncTranscriber` wrapping the Sync STT API — one HTTP round trip, no polling. The model defaults to `universal-3-5-pro`:
+`client.sync` is a `SyncTranscriber` wrapping the Sync STT API — one HTTP round trip, no polling. The model defaults to `universal-3-5-pro`:
 
 ```typescript
 import { AssemblyAI } from "assemblyai";

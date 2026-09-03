@@ -11,6 +11,7 @@ LLM training data contains outdated AssemblyAI patterns — deprecated LeMUR API
 - Use `Authorization: Bearer KEY` instead of `Authorization: KEY`
 - Use `word_boost` instead of `keyterms_prompt`
 - Use discontinued Java/Go/C# SDKs
+- Write Python 0.x SDK patterns removed in 1.0.0 (`aai.Lemur`, `assemblyai[extras]`, `MicrophoneStream`)
 - Miss all LiveKit/Pipecat-specific gotchas for voice agents
 - Use wrong model ID formats (`anthropic/claude-...` instead of `claude-...`)
 
@@ -18,13 +19,13 @@ LLM training data contains outdated AssemblyAI patterns — deprecated LeMUR API
 
 | Area | Details |
 |------|---------|
-| **Pre-recorded transcription** | Universal-3 Pro, Universal-2, prompting, speech_models fallback |
+| **Pre-recorded transcription** | Universal-3.5 Pro, Universal-2, prompting, speech_models fallback |
 | **Streaming STT** | v3 protocol, v2 legacy, Whisper Streaming, temp tokens, error codes |
 | **Voice agents** | LiveKit and Pipecat integrations, universal-3-5-pro defaults, turn detection, silence tuning, latency optimization |
 | **LLM Gateway** | Chat completions, tool calling, agentic workflows, structured output caveats, full model list |
 | **Audio intelligence** | PII redaction, diarization, summarization, sentiment, entity detection, content safety, chapters |
 | **Speech understanding** | Translation, speaker identification, custom formatting |
-| **SDKs** | Python and JS/TS patterns, Ruby status, discontinued SDK warnings |
+| **SDKs** | Current Python (`1.1.0`) and JS/TS (`4.37.1`) patterns, the 0.x→1.x Python migration, Ruby status, discontinued SDK warnings |
 | **API reference** | Full parameter list, export endpoints, webhooks, custom spelling, multichannel, code switching |
 
 ## Installation

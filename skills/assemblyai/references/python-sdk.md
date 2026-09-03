@@ -3,18 +3,57 @@
 ## Installation
 
 ```bash
-pip install assemblyai
+pip install "assemblyai>=1.1.0"
 ```
+
+**1.1.0 is the latest release (Sept 1, 2026).** Install it, or `pip install -U assemblyai` for whatever is newest if you are reading this later. The matched JS/TS version is `assemblyai@^4.37.1`, which shipped the same day.
+
+Most 0.x code runs on 1.x unchanged, but four things were removed or renamed in 1.0.0 (Aug 14, 2026) — see §13 for the full migration. 1.0.0 is the oldest release with the current API surface; anything on 0.x is a different SDK generation.
 
 ## Authentication
 
-The SDK uses the `Authorization: KEY` header (no Bearer prefix). Set your API key before making any calls:
+The SDK uses the `Authorization: KEY` header (no Bearer prefix). Three ways to supply the key, in precedence order:
+
+```python
+from assemblyai.prerecorded.v2 import Transcriber
+
+# 1. Per client — preferred in 1.x. Accepted by every transcriber and by Client().
+transcriber = Transcriber(api_key="YOUR_API_KEY")
+```
 
 ```python
 import assemblyai as aai
 
+# 2. Process-wide global. Still supported, still the default for any client not given a key.
 aai.settings.api_key = "YOUR_API_KEY"
+transcriber = aai.Transcriber()
 ```
+
+3. The `ASSEMBLYAI_API_KEY` environment variable, which `settings` reads automatically — no code needed.
+
+`api_key=` wins over an explicitly passed `client=`: the transcriber derives its own client from a copy of that client's settings with the key replaced, leaving your client untouched. That makes per-tenant keys over a shared client configuration straightforward:
+
+```python
+from assemblyai import Client, Settings
+from assemblyai.prerecorded.v2 import Transcriber
+
+shared = Client(settings=Settings(api_key="TEAM_KEY", http_timeout=60.0))
+per_tenant = Transcriber(client=shared, api_key="TENANT_KEY")  # keeps http_timeout=60.0
+```
+
+## Import Style
+
+Each product lives in a versioned subpackage. New code should import from it — the path states which product and which API version you are pinned to:
+
+| Product | Import |
+|---------|--------|
+| Pre-recorded / async | `from assemblyai.prerecorded.v2 import Transcriber, AsyncTranscriber, Transcript, TranscriptionConfig` |
+| Sync STT (≤120s) | `from assemblyai.sync.v1 import SyncTranscriber, AsyncSyncTranscriber, SyncTranscriptionConfig` |
+| Streaming / realtime | `from assemblyai.streaming.v3 import RealTimeTranscriber, RealTimeTranscriberOptions, RealTimeParameters` |
+
+Cross-cutting names are **not** re-exported by the subpackages — import `TranscriptStatus`, `TranscriptError`, `Settings`, `Client`, `AsyncClient`, and the global `settings` from the top-level package. Mixing both styles in one file is normal and expected.
+
+The top-level `aai.Transcriber` / `aai.SyncTranscriber` and the flat module paths (`assemblyai.transcriber`, `assemblyai.sync`, `assemblyai.sync_api`) still work and are not deprecated — the examples below use `import assemblyai as aai` where it reads better.
 
 ---
 
@@ -23,12 +62,14 @@ aai.settings.api_key = "YOUR_API_KEY"
 ### From a URL
 
 ```python
-import assemblyai as aai
+from assemblyai import TranscriptStatus
+from assemblyai.prerecorded.v2 import Transcriber
 
-aai.settings.api_key = "YOUR_API_KEY"
-
-transcriber = aai.Transcriber()
+transcriber = Transcriber(api_key="YOUR_API_KEY")
 transcript = transcriber.transcribe("https://example.com/audio.mp3")
+
+if transcript.status == TranscriptStatus.error:
+    raise RuntimeError(f"Transcription failed: {transcript.error}")
 
 print(transcript.text)
 ```
@@ -36,10 +77,34 @@ print(transcript.text)
 ### From a local file
 
 ```python
-transcript = transcriber.transcribe("/path/to/local/audio.mp3")
+import pathlib
+
+transcript = transcriber.transcribe(pathlib.Path("/path/to/local/audio.mp3"))
 ```
 
-The SDK automatically uploads the local file to AssemblyAI's servers before transcription. No separate upload step is needed.
+The SDK automatically uploads the local file to AssemblyAI's servers before transcription. No separate upload step is needed. `transcribe()` accepts a `pathlib.Path`, a `str` path, a URL, raw `bytes`/`bytearray`, or an open binary file — no `str()` wrapping needed for a `Path`.
+
+### Bounding the poll with `poll_timeout`
+
+`transcribe()` polls until the transcript reaches a terminal status, which by default means forever. Give it a deadline so a stuck job cannot hang a request handler:
+
+```python
+from assemblyai import TranscriptError
+from assemblyai.prerecorded.v2 import Transcriber
+
+transcriber = Transcriber(api_key="YOUR_API_KEY")
+
+try:
+    transcript = transcriber.transcribe(
+        "https://example.com/audio.mp3",
+        poll_timeout=300,
+    )
+except TranscriptError as error:
+    # The job keeps processing server-side; the message carries the transcript id.
+    print(f"still running: {error}")
+```
+
+Available on `Transcriber.transcribe`, `Transcriber.transcribe_async`, and `AsyncTranscriber.transcribe`; omit it to keep the unbounded behavior. Pick the transcript up later with `Transcript.get_by_id(transcript_id)`.
 
 ### With TranscriptionConfig and speech_models fallback
 
@@ -207,7 +272,7 @@ for result in transcript.content_safety.results:
 
 ### Summarization
 
-The top-level `summarization=True` param is **deprecated**. Use Speech Understanding summarization instead — the SDK's `TranscriptionConfig` accepts the `speech_understanding` object directly (SDK ≥0.64.x), so you do NOT need to drop to raw REST for this:
+The top-level `summarization=True` param is **deprecated**. Use Speech Understanding summarization instead — `TranscriptionConfig` accepts the `speech_understanding` object directly, so you do NOT need to drop to raw REST for this:
 
 ```python
 config = aai.TranscriptionConfig(
@@ -283,27 +348,34 @@ print(transcript.text)
 
 ## 8. Streaming v3 (Realtime)
 
-Use the `assemblyai.streaming.v3` client for new realtime STT code. Set `speech_model="universal-3-5-pro"` explicitly; the raw API defaults to it, but the Python SDK parameter is required. Requires `assemblyai>=0.64.21` — older SDKs such as `0.64.4` reject `universal-3-5-pro` during local parameter validation. Newer features need newer SDKs: `sample_rate`-optional Opus input needs `>=0.64.26`; `session_heartbeat` and `aac` encoding need `>=0.64.32`.
+Use `assemblyai.streaming.v3` for new realtime STT code. In 1.x the classes are named `RealTime*` — `RealTimeTranscriber`, `RealTimeTranscriberOptions`, `RealTimeParameters`, `RealTimeEvents`, `RealTimeError`. The former `Streaming*` names are still bound to the same objects (so `isinstance` checks and old imports keep working), but write the `RealTime*` names.
+
+Set `speech_model="universal-3-5-pro"` explicitly; the raw API defaults to it, but the SDK parameter is required. `sample_rate` is required for PCM encodings and optional for the self-describing compressed ones (`opus`, `ogg_opus`, `aac`).
 
 ```python
-import os
+from assemblyai.streaming.v3 import RealTimeParameters, RealTimeTranscriber
 
-from assemblyai.streaming.v3 import StreamingClient, StreamingClientOptions, StreamingParameters
+transcriber = RealTimeTranscriber(api_key="YOUR_API_KEY")
 
-client = StreamingClient(
-    StreamingClientOptions(api_key=os.environ["ASSEMBLYAI_API_KEY"])
-)
-
-client.connect(
-    StreamingParameters(
+transcriber.connect(
+    RealTimeParameters(
         speech_model="universal-3-5-pro",
         sample_rate=16_000,
     )
 )
 
-# Send PCM16 audio chunks with client.stream(audio_generator), then:
-client.disconnect(terminate=True)
+# `chunks` is any iterable of 16-bit PCM frames from your capture library.
+chunks = [b"\x00\x00" * 160]
+transcriber.stream(chunks)
+
+transcriber.disconnect(terminate=True)
 ```
+
+`api_key=` on the constructor covers the common case; pass `RealTimeTranscriberOptions` when you need more — `api_host`, `token` (a temporary token instead of a key), `connect_timeout`, `max_connection_retries`, `connection_retry_delay`, `terminate_timeout`.
+
+**The SDK does not capture microphone audio.** `assemblyai.extras` and its `MicrophoneStream` were removed in 1.0.0, along with the `[extras]` install option. Bring your own capture — `pyaudio`, `sounddevice`, a loopback device, a file — and pass 16-bit PCM chunks to `stream()`.
+
+For the async client, use `AsyncRealTimeTranscriber` (formerly `AsyncStreamingClient`) from the same module.
 
 ---
 
@@ -363,7 +435,7 @@ transcript = transcriber.transcribe(upload_url)
 
 ## 11. Sync STT (Short-Form Audio, ≤120s)
 
-`SyncTranscriber` (SDK ≥0.64.25) wraps the Sync STT API — one HTTP round trip, no polling. Call `warm()` shortly before transcribing to pre-establish the connection (it's idempotent and cheap), and set `keepalive_expiry` to hold the pooled connection between requests (useful in voice-agent pipelines):
+`SyncTranscriber` (`assemblyai.sync.v1`) wraps the Sync STT API — one HTTP round trip, no polling. Call `warm()` shortly before transcribing to pre-establish the connection (it's idempotent and cheap), and set `keepalive_expiry` to hold the pooled connection between requests (useful in voice-agent pipelines):
 
 ```python
 import assemblyai as aai
@@ -385,4 +457,64 @@ result = transcriber.transcribe(
 print(result.text)
 ```
 
-Accepts a local file path, raw bytes, or a stream — **not a URL**. There is also `transcribe_async()` and `close()`. The model defaults to `universal-3-5-pro` (the only sync model in the SDK). `SyncTranscriptionConfig` fields mirror the REST `config` part: `model`, `prompt`, `keyterms_prompt`, `conversation_context`, `language_codes`, `timestamps`, and `sample_rate`/`channels` for raw PCM. See `references/api-reference.md` §16 for limits and error codes.
+Accepts a local file path, raw bytes, or a stream — **not a URL**. There is also `transcribe_async()` and `close()`, and `AsyncSyncTranscriber` (added in 1.0.0) for asyncio callers, with an awaitable `warm()`. The model defaults to `universal-3-5-pro` (the only sync model in the SDK). `SyncTranscriptionConfig` fields mirror the REST `config` part: `model`, `prompt`, `keyterms_prompt`, `conversation_context`, `language_codes`, `timestamps`, and `sample_rate`/`channels` for raw PCM. See `references/api-reference.md` §16 for limits and error codes.
+
+---
+
+## 12. Asyncio Support
+
+Every product has an asyncio transcriber: `AsyncTranscriber` (`prerecorded.v2`), `AsyncSyncTranscriber` (`sync.v1`), and `AsyncRealTimeTranscriber` (`streaming.v3`).
+
+The async HTTP transcribers hold a connection pool, so use them as async context managers and the pool is always released:
+
+```python
+import asyncio
+
+from assemblyai.prerecorded.v2 import AsyncTranscriber
+
+
+async def main():
+    async with AsyncTranscriber(api_key="YOUR_API_KEY") as transcriber:
+        transcript = await transcriber.transcribe(
+            "https://example.com/audio.mp3",
+            poll_timeout=300,
+        )
+        print(transcript.text)
+
+
+asyncio.run(main())
+```
+
+`aclose()` is the explicit equivalent. A client you pass in with `client=` stays yours to close; anything the transcriber builds itself — including a client derived because you also passed `api_key=` — it closes itself.
+
+---
+
+## 13. Migrating from 0.x to 1.x
+
+Most 0.x code runs on 1.x unchanged. No method signature was narrowed, every argument that worked in 0.x still works, and the new ones are optional keywords. Four things actually break:
+
+| 0.x | 1.x |
+|-----|-----|
+| `aai.Lemur(...)` and every `aai.Lemur*` name | **Removed.** No drop-in replacement in the package — transcribe, then send `transcript.text` to the LLM Gateway (§9) |
+| `pip install "assemblyai[extras]"` | **Removed** — the install fails. Use `pip install -U assemblyai` |
+| `from assemblyai.extras import MicrophoneStream` | **Removed.** Capture PCM yourself and pass chunks to `RealTimeTranscriber.stream(...)` (§8) |
+| `StreamingClient`, `AsyncStreamingClient`, `StreamingClientOptions`, `StreamingParameters`, `StreamingSessionParameters`, `StreamingEvents`, `StreamingError`, `StreamingErrorCodes` | Renamed `RealTimeTranscriber`, `AsyncRealTimeTranscriber`, `RealTimeTranscriberOptions`, `RealTimeParameters`, `RealTimeSessionParameters`, `RealTimeEvents`, `RealTimeError`, `RealTimeErrorCodes`. **The old names still work** — each is bound to the same object — so this one is a style migration, not a breakage |
+
+What did *not* change:
+
+- `aai.settings.api_key = "..."` still works and is still the default for any client not given a key.
+- `aai.Transcriber()` / `aai.SyncTranscriber()` and the flat import paths (`assemblyai.transcriber`, `assemblyai.sync`, `assemblyai.sync_api`) still work and are not deprecated.
+
+Worth adopting once you are on 1.x:
+
+| Pattern | Why |
+|---------|-----|
+| `Transcriber(api_key="...")` | Keeps the key out of process-wide state; works per-tenant over a shared client |
+| `transcribe(url, poll_timeout=300)` | An unbounded poll can hang a request handler indefinitely |
+| `if transcript.status == TranscriptStatus.error:` | A failed transcription is **returned, not raised** — `text` and `words` are `None` |
+| `async with AsyncTranscriber(...)` | Releases the HTTP connection pool |
+| `SyncTranscriber.warm()` + `settings.keepalive_expiry` | Keeps the DNS + TCP + TLS handshake off the critical path (§11) |
+| `transcribe(pathlib.Path(...))` | `Path` is accepted directly; no `str()` wrapping |
+| `from assemblyai.prerecorded.v2 import Transcriber` | States the product and API version you are pinned to |
+
+Upstream guide: https://github.com/AssemblyAI/assemblyai-python-sdk/blob/master/MIGRATION.md

@@ -30,16 +30,37 @@ Authorization: YOUR_API_KEY
 
 ## SDKs
 
-| Language | Package | Status |
+| Language | Install | Status |
 |----------|---------|--------|
-| Python | `pip install assemblyai` | Active |
-| JavaScript/TypeScript | `npm i assemblyai` | Active |
+| Python | `pip install "assemblyai>=1.1.0"` | Active |
+| JavaScript/TypeScript | `npm i assemblyai@^4.37.1` | Active |
 | Ruby | `assemblyai` gem | Active |
 | Java | `assemblyai-java-sdk` | **Discontinued April 2025** |
 | Go | `assemblyai-go-sdk` | **Discontinued April 2025** |
 | C# .NET | `AssemblyAI` NuGet | **Discontinued April 2025** |
 
 **Only Python, JS/TS, and Ruby SDKs are maintained.** For Java, Go, or C#, use the REST API directly.
+
+### SDK versions
+
+**Install the latest of each: Python `1.1.0` and Node `4.37.1`, both released Sept 1, 2026.** These two are a matched pair — they shipped the same day with the same change. The two SDKs version independently (the JS/TS SDK has been on 4.x since December 2023), so there is no shared version number to match on; match on the release carrying the same change instead.
+
+If you are reading this well after Sept 2026, take whatever is newest — `pip install -U assemblyai` and `npm i assemblyai@latest` — rather than pinning the versions above. The absolute minimum that still has the current API surface is **Python 1.0.0** (Aug 14, 2026) and **Node 4.37.0** (Aug 28, 2026), the pair that removed LeMUR; anything older than that is a different SDK generation.
+
+**Python 1.0.0 breaking changes** — training data almost always shows the 0.x forms:
+
+| 0.x | 1.x |
+|-----|-----|
+| `aai.Lemur(...)` and every `aai.Lemur*` name | **Removed.** Feed `transcript.text` to the LLM Gateway |
+| `pip install "assemblyai[extras]"` | **Removed** — the `[extras]` option now fails. Use `pip install -U assemblyai` |
+| `from assemblyai.extras import MicrophoneStream` | **Removed.** The SDK no longer captures mic audio — use `pyaudio`/`sounddevice` and pass 16-bit PCM chunks to `stream(...)` |
+| `StreamingClient`, `StreamingClientOptions`, `StreamingParameters` | Renamed `RealTimeTranscriber`, `RealTimeTranscriberOptions`, `RealTimeParameters`. The old names are still bound to the same objects (nothing deprecated), but write the new ones |
+
+Nothing else breaks: `aai.settings.api_key`, `aai.Transcriber()`, and the flat import paths (`assemblyai.transcriber`, `assemblyai.sync`) all still work, and no signature was narrowed. New in 1.x and worth adopting — `api_key=` on every transcriber and client constructor, `poll_timeout=` on `transcribe()`, `async with AsyncTranscriber(...)`, `AsyncSyncTranscriber`, and versioned imports (`assemblyai.prerecorded.v2`, `assemblyai.sync.v1`, `assemblyai.streaming.v3`). See `references/python-sdk.md`.
+
+**Node 4.37.0 breaking change:** `client.lemur`, `LemurService`, and all Lemur request/response types are removed (the LeMUR endpoints answer 404). No renames, no signature changes — the rest of a 4.36.x codebase is unaffected.
+
+**`universal-3-6-pro`** appears in the streaming model enums added by Python 1.1.0 (`assemblyai.streaming.v3.SpeechModel`) and Node 4.37.1 (`StreamingSpeechModel`). It is **not yet in the public docs or the model picker** — keep using `universal-3-5-pro` until it is announced.
 
 ## Speech-to-Text Models
 
@@ -209,8 +230,12 @@ See `references/llm-gateway.md` for models, tool calling, structured outputs, an
 | `word_boost` anywhere | Use `keyterms_prompt` instead — on the async REST API *and* now the Sync STT API, which renamed its `word_boost` config param to `keyterms_prompt` in July 2026 (legacy aliases `word_boost`/`keyterms` still accepted on Sync) |
 | Hardcoding v2 streaming URL | v3 (`/v3/ws`) is current; v2 still works but is legacy |
 | Using `speech_model=u3-rt-pro` for streaming | **Removed July 2026** from the model picker and streaming spec enum — superseded by `universal-3-5-pro` (the streaming default). From **September 2, 2026** `u3-rt-pro` connections are silently redirected to `universal-3-5-pro`. Set a different model only for cost tradeoffs (`universal-streaming-english`/`-multilingual`) |
-| Python SDK rejects `universal-3-5-pro` | Upgrade to `assemblyai>=0.64.21` for Streaming v3 SDK support. Older SDKs such as `0.64.4` validate `speech_model` against an enum that omits `universal-3-5-pro` |
+| Python SDK rejects `universal-3-5-pro` | The SDK validates `speech_model` locally against an enum, and pre-`0.64.21` releases omit `universal-3-5-pro`. Install the current release — `pip install "assemblyai>=1.1.0"` |
 | `aai.SpeechModel.universal_3_5_pro` in Python SDK | Use raw strings: `"universal-3-5-pro"`, `"universal-2"` — these enum aliases don't exist in the SDK |
+| `aai.Lemur(...)` / `client.lemur` in the SDKs | **Removed** — Python 1.0.0 and Node 4.37.0 deleted the LeMUR surface entirely (the endpoints answer 404). Transcribe, then send `transcript.text` to the LLM Gateway |
+| `pip install "assemblyai[extras]"` | **Removed in Python 1.0.0** — the `[extras]` option fails outright. Use `pip install -U assemblyai` |
+| `from assemblyai.extras import MicrophoneStream` | **Removed in Python 1.0.0.** The SDK does not capture microphone audio; use `pyaudio`/`sounddevice` and pass 16-bit PCM chunks to `RealTimeTranscriber.stream(...)` |
+| `StreamingClient` / `StreamingClientOptions` / `StreamingParameters` in Python | Renamed in 1.0.0 to `RealTimeTranscriber` / `RealTimeTranscriberOptions` / `RealTimeParameters`. The old names still resolve to the same objects, so this is style, not breakage — but write the `RealTime*` names in new code |
 | S2S `session.update` without `"session"` key | Must wrap config: `{"type":"session.update","session":{...}}` |
 | S2S tool schema using `{"function":{...}}` nesting | S2S tools are flat: `{"type":"function","name":"...","description":"...","parameters":{...}}` |
 | Voice Agent S2S URL | Correct URL: `wss://agents.assemblyai.com/v1/ws` — not `/v1/voice` (renamed April 2026), `/v1/realtime` (older), or `speech-to-speech.us.assemblyai.com` (very old) |

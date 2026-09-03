@@ -58,6 +58,21 @@
         {"text": "Mentions the 120s (or 40MB) sync limit and/or falls back to the async API for longer recordings", "type": "semantic"},
         {"text": "Does not pass unsupported async-only params (e.g. speaker_labels, redact_pii) in the sync config", "type": "semantic"}
       ]
+    },
+    {
+      "id": 5,
+      "eval_name": "python-mic-streaming-sdk-1x",
+      "prompt": "In Python, transcribe my microphone live with AssemblyAI and print partial transcripts as I speak plus the final text for each turn.",
+      "expected_output": "A Python streaming v3 implementation that captures PCM itself (pyaudio/sounddevice) and feeds it to the SDK's realtime transcriber, without the microphone helper and install extra that Python SDK 1.0.0 removed.",
+      "files": [],
+      "assertions": [
+        {"text": "Uses assemblyai.streaming.v3 (not the legacy v2 realtime API, and not a hand-rolled WebSocket when the SDK is available)", "type": "semantic"},
+        {"text": "Does NOT import assemblyai.extras or MicrophoneStream — both were removed in Python SDK 1.0.0", "type": "semantic"},
+        {"text": "Does NOT install assemblyai[extras] — the extra was removed in Python SDK 1.0.0", "type": "semantic"},
+        {"text": "Captures microphone PCM itself (pyaudio, sounddevice, or equivalent) and passes 16-bit PCM chunks to the transcriber's stream() method", "type": "semantic"},
+        {"text": "Sets speech_model to universal-3-5-pro and passes sample_rate explicitly (required for PCM)", "type": "semantic"},
+        {"text": "If it pins a version, pins the current assemblyai>=1.1.0 (or at minimum >=1.0.0) rather than a 0.64.x release", "type": "semantic"}
+      ]
     }
   ]
 }
