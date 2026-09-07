@@ -153,6 +153,24 @@ for utterance in transcript.utterances:
     print(f"Speaker {utterance.speaker}: {utterance.text}")
 ```
 
+### Diarization tuning with SpeakerOptions
+
+Use `aai.SpeakerOptions` to specify expected speaker bounds or select a diarization method:
+
+```python
+config = aai.TranscriptionConfig(
+    speaker_labels=True,
+    speaker_options=aai.SpeakerOptions(
+        min_speakers_expected=2,
+        max_speakers_expected=4,
+        short_file_diarization_method="deliberate",
+    ),
+)
+
+transcriber = aai.Transcriber(config=config)
+transcript = transcriber.transcribe("https://example.com/audio.mp3")
+```
+
 ---
 
 ## 4. PII Redaction
@@ -314,6 +332,19 @@ config = aai.TranscriptionConfig(language_detection=True)
 transcript = transcriber.transcribe("https://example.com/audio.mp3", config=config)
 
 print(transcript.json_response["language_code"])
+print(transcript.text)
+```
+
+With regional English spelling localization (e.g. Australian or British English):
+
+```python
+config = aai.TranscriptionConfig(
+    language_detection=True,
+    language_detection_options=aai.LanguageDetectionOptions(
+        localization=["en_au"],
+    ),
+)
+transcript = transcriber.transcribe("https://example.com/audio.mp3", config=config)
 print(transcript.text)
 ```
 
