@@ -1,6 +1,6 @@
 ---
 name: assemblyai
-description: Use when implementing speech-to-text, audio transcription, real-time streaming STT, audio intelligence features, or voice AI using AssemblyAI APIs or SDKs. Use when user mentions AssemblyAI, voice agents, transcription, speaker diarization, PII redaction of audio, LLM Gateway for audio understanding, or applying LLMs to transcripts. Also use when building voice agents with LiveKit or Pipecat that need speech-to-text, or when the user is working with any audio/video processing pipeline that could benefit from transcription, even if they don't mention AssemblyAI by name.
+description: Use when implementing speech-to-text, audio transcription, real-time streaming STT, dictation (spoken notes turned into cleaned-up text), audio intelligence features, or voice AI using AssemblyAI APIs or SDKs. Use when user mentions AssemblyAI, voice agents, transcription, dictation, speaker diarization, PII redaction of audio, LLM Gateway for audio understanding, or applying LLMs to transcripts. Also use when building voice agents with LiveKit or Pipecat that need speech-to-text, or when the user is working with any audio/video processing pipeline that could benefit from transcription, even if they don't mention AssemblyAI by name.
 ---
 
 # AssemblyAI Speech-to-Text and Voice AI
@@ -21,6 +21,7 @@ Authorization: YOUR_API_KEY
 |---------|----|----|
 | REST API (async) | `https://api.assemblyai.com` | `https://api.eu.assemblyai.com` |
 | Sync STT API (≤120s) | `https://sync.assemblyai.com` (global default, routes to nearest; `https://sync.us.assemblyai.com` for US residency) | `https://sync.eu.assemblyai.com` |
+| Dictation API (≤120s, transcript + rewrite) | `https://dictation.assemblyai.com` (global default, routes to nearest; `https://dictation.us.assemblyai.com` for US residency) | `https://dictation.eu.assemblyai.com` |
 | LLM Gateway | `https://llm-gateway.assemblyai.com/v1` | `https://llm-gateway.eu.assemblyai.com/v1` |
 | Streaming v3 | `wss://streaming.assemblyai.com/v3/ws` | `wss://streaming.eu.assemblyai.com/v3/ws` |
 | Streaming v2 (legacy) | `wss://api.assemblyai.com/v2/realtime/ws` | — |
@@ -32,8 +33,8 @@ Authorization: YOUR_API_KEY
 
 | Language | Install | Status |
 |----------|---------|--------|
-| Python | `pip install "assemblyai>=1.1.0"` | Active |
-| JavaScript/TypeScript | `npm i assemblyai@^4.37.1` | Active |
+| Python | `pip install "assemblyai>=1.5.4"` | Active |
+| JavaScript/TypeScript | `npm i assemblyai@^4.41.1` | Active |
 | Ruby | `assemblyai` gem | Active |
 | Java | `assemblyai-java-sdk` | **Discontinued April 2025** |
 | Go | `assemblyai-go-sdk` | **Discontinued April 2025** |
@@ -43,7 +44,9 @@ Authorization: YOUR_API_KEY
 
 ### SDK versions
 
-**Install the latest of each: Python `1.1.0` and Node `4.37.1`, both released Sept 1, 2026.** These two are a matched pair — they shipped the same day with the same change. The two SDKs version independently (the JS/TS SDK has been on 4.x since December 2023), so there is no shared version number to match on; match on the release carrying the same change instead.
+**Install the latest of each: Python `1.5.4` (Sept 14, 2026) and Node `4.41.1` (Sept 11, 2026).** These are the current releases and the first pair to carry the **Dictation API** (`DictationTranscriber` / `client.dictation`, added in Python 1.5.2 and Node 4.40.0), streaming sync uploads (`transcribe_live()` / `transcribeLive()`), the Node `client.llmGateway` service (4.38.0), and the `universal-3-6` streaming model. The two SDKs version independently (the JS/TS SDK has been on 4.x since December 2023), so there is no shared version number to match on; match on the release carrying the same change instead.
+
+Always check the installed version (`pip show assemblyai` / `npm ls assemblyai`) before writing code against `DictationTranscriber` or `client.dictation` in an existing project — anything older than the versions above has no dictation surface.
 
 If you are reading this well after Sept 2026, take whatever is newest — `pip install -U assemblyai` and `npm i assemblyai@latest` — rather than pinning the versions above. The absolute minimum that still has the current API surface is **Python 1.0.0** (Aug 14, 2026) and **Node 4.37.0** (Aug 28, 2026), the pair that removed LeMUR; anything older than that is a different SDK generation.
 
@@ -132,12 +135,34 @@ A separate synchronous endpoint for short clips — send audio in one HTTP reque
 - **Audio limits:** 80ms–120s, ≤40MB, 16-bit only, mono/stereo (stereo down-mixed), sample rates 8000/16000/22050/24000/32000/44100/48000 Hz
 - **Response:** `{ text, words[{text, start?, end?, confidence}], confidence, audio_duration_ms, session_id, request_time_ms }` — word `start`/`end` (integer milliseconds) appear only when `timestamps: true`; only the clip-level durations carry the `_ms` suffix
 - **Pre-warming:** `GET https://sync.assemblyai.com/v1/warm` establishes the connection ahead of the first request (returns `200 {"warm":"toasty"}`). Python SDK: `SyncTranscriber.warm()` plus `aai.settings.keepalive_expiry` to hold the connection; Node SDK has `SyncTranscriber` too
-- **30s per-request deadline** (504 `inference_timeout`). For audio >120s use the async REST API; for live mic audio use Streaming.
+- **30s per-request deadline** (504 `inference_timeout`). For audio >120s use the async REST API; for live mic audio use Streaming. If you need the utterance **cleaned up or reshaped** (filler removed, formatted as a note) alongside the verbatim transcript, use the **Dictation API** below instead.
 
 ```bash
 curl -X POST https://sync.assemblyai.com/v1/transcribe \
   -H 'Authorization: YOUR_API_KEY' \
   -H 'X-AAI-Model: universal-3-5-pro' \
+  -F 'audio=@sample.wav;type=audio/wav'
+```
+
+## Dictation API (short-form dictation, ≤120s, transcript + LLM rewrite)
+
+A **separate service** (own hostname, own request shape — not Sync, not Pre-recorded, not Streaming) for turning one spoken utterance into **send-ready text plus the verbatim transcript in a single HTTP call**. Cleanup runs **by default**: filler out, self-corrections resolved, punctuation/capitalization applied. Set `llm_instruction` for a different shape (bulleted action items, a clinical chart note, a booking confirmation). Runs on Universal-3.5 Pro across 32 languages. Use it for dictation apps, voice notes, scribes, and "speak a message, send it" flows; use Sync STT when you only want the verbatim transcript.
+
+- **Endpoint:** `POST https://dictation.assemblyai.com/v1/transcribe/live` (`/v1` only — no unversioned alias; `/v1/transcribe/stream` is the legacy path). `dictation.us.` / `dictation.eu.` for data residency
+- **Auth:** `Authorization: YOUR_API_KEY` (raw key, no Bearer)
+- **Body:** `multipart/form-data`, **`config` part first (required, JSON — send `{}` for defaults), then `audio`** (`audio/wav` or `audio/pcm`, ≤120s, 16-bit). The server transcribes as bytes arrive and can't start without the config, so audio-before-config or a missing config is a `400`. **Compressed formats (MP3/M4A/FLAC/OGG/WebM) → `415`** — decode first
+- **`config` fields (exactly these; unknown → `400`):** `sample_rate` + `channels` (required for raw PCM, ignored for WAV), `language_codes` (**a list**, default `["en"]`, 32 codes), `stt_prompt` (≤6000 chars, contextual *description* of the audio; alias `prompt` — send one, not both), `keyterms_prompt` (≤100 terms / 8000 chars; aliases `keyterms`/`word_boost` accepted — send only one), `llm_instruction` (≤2048 chars, plain-English rewrite task — **replaces** the default cleanup; omit/`null` keeps it). No `model`, `timestamps`, `conversation_context`, `speaker_labels`, `redact_pii`
+- **Response:** `{ text, words[{text, confidence}], confidence, llm_response, llm_error, audio_duration_ms, session_id, request_time_ms, sync_time_ms, auth_time_ms }`. `text` is always the verbatim transcript; the rewrite is in `llm_response`. **No word timestamps**
+- **The rewrite is best-effort:** a failed rewrite is still `200` with `llm_response: null` and `llm_error: "timeout"` (5s internal deadline) or `"error"`. **Fall back to `text`; never treat a non-null `llm_error` as a failed request.** SDKs expose this as `final_text`
+- **Upload while recording:** the body streams, so open the request when the user starts speaking and push PCM frames as captured (config first; don't go silent mid-body; a chunked body can't be replayed — keep audio in memory to retry)
+- **Pre-warming:** `GET https://dictation.assemblyai.com/warm` (unauthenticated, `200 {"warm":"toasty"}`; `/v1/warm` also works) — same client and same host as the transcription, shortly before it
+- **Errors:** two shapes — `{status, title, detail}` for most, `{error, error_code}` only for request-parsing failures; read `detail` then fall back to `error`. 429/502/503/504 transient; 400/413/415 fix the request; 401 fix the key. Client timeout 90s
+- **SDKs:** `DictationTranscriber` (Python **≥1.5.2**, `assemblyai.dictation.v1`; install the current 1.5.4) and `client.dictation` (Node **≥4.40.0**; install the current 4.41.1), both from Sept 11, 2026. Check the installed version before using the SDK path in an existing project; on an older SDK, call the endpoint over HTTP. See `references/dictation.md`
+
+```bash
+curl -X POST https://dictation.assemblyai.com/v1/transcribe/live \
+  -H 'Authorization: YOUR_API_KEY' \
+  -F 'config={"llm_instruction": "Turn this into a bulleted list of action items."};type=application/json' \
   -F 'audio=@sample.wav;type=audio/wav'
 ```
 
@@ -227,10 +252,17 @@ See `references/llm-gateway.md` for models, tool calling, structured outputs, an
 | `gemini-3-flash-preview` / `gemini-3.1-flash-lite-preview` on LLM Gateway | **Removed July 2026.** Use `gemini-3.5-flash`, `gemini-3.6-flash`, or `gemini-3.5-flash-lite` |
 | Uploading to `/v2/upload` with `-d`/`--data` or a JSON body | Use `--data-binary @file` (raw bytes). `-d`/JSON returns a valid `upload_url` but transcription later fails with `Transcoding failed. File type application/json` |
 | Using Java/Go/C# SDKs | **Discontinued.** Use Python, JS/TS, Ruby, or raw API |
-| `word_boost` anywhere | Use `keyterms_prompt` instead — on the async REST API *and* now the Sync STT API, which renamed its `word_boost` config param to `keyterms_prompt` in July 2026 (legacy aliases `word_boost`/`keyterms` still accepted on Sync) |
+| `word_boost` anywhere | Use `keyterms_prompt` instead — on the async REST API *and* now the Sync STT API, which renamed its `word_boost` config param to `keyterms_prompt` in July 2026 (legacy aliases `word_boost`/`keyterms` still accepted on Sync and Dictation — but send only one of the three or Dictation returns 400) |
+| Using Sync STT or the async API for dictation cleanup | The **Dictation API** (`dictation.assemblyai.com/v1/transcribe/live`) returns the verbatim transcript **and** an LLM-cleaned rewrite in one call — don't transcribe with Sync STT and then bolt on a separate LLM Gateway call for filler removal / reformatting of a ≤120s utterance |
+| Dictation `audio` part before `config`, or no `config` part | `config` (JSON, `{}` for defaults) must be the **first** multipart part; the server can't start without it → `400 bad_request` |
+| Sending MP3/M4A/FLAC/OGG/WebM to Dictation | `415` — Dictation decodes incrementally and only accepts `audio/wav` or `audio/pcm` (16-bit). Decode first |
+| Treating Dictation `llm_error` as a failed request | The rewrite is best-effort — a `200` with `llm_response: null` and `llm_error: "timeout"`/`"error"` still carries the verbatim `text`. Fall back to `text` (SDK: `final_text`) |
+| Dictation `language_codes: "es"` (string) or `language_code` | It's always a **list**: `language_codes: ["es"]` |
+| Passing `model`, `timestamps`, `conversation_context`, `speaker_labels`, or `redact_pii` in Dictation `config` | Unknown fields → `400`. Dictation's config is exactly `sample_rate`, `channels`, `language_codes`, `stt_prompt`, `keyterms_prompt`, `llm_instruction` |
+| `aai.DictationTranscriber` / `client.dictation` on an older SDK | Only in Python ≥1.5.2 / Node ≥4.40.0 (Sept 11, 2026) — install the current 1.5.4 / 4.41.1. Verify the installed version; otherwise use raw HTTP |
 | Hardcoding v2 streaming URL | v3 (`/v3/ws`) is current; v2 still works but is legacy |
 | Using `speech_model=u3-rt-pro` for streaming | **Removed July 2026** from the model picker and streaming spec enum — superseded by `universal-3-5-pro` (the streaming default). From **September 2, 2026** `u3-rt-pro` connections are silently redirected to `universal-3-5-pro`. Set a different model only for cost tradeoffs (`universal-streaming-english`/`-multilingual`) |
-| Python SDK rejects `universal-3-5-pro` | The SDK validates `speech_model` locally against an enum, and pre-`0.64.21` releases omit `universal-3-5-pro`. Install the current release — `pip install "assemblyai>=1.1.0"` |
+| Python SDK rejects `universal-3-5-pro` | The SDK validates `speech_model` locally against an enum, and pre-`0.64.21` releases omit `universal-3-5-pro`. Install the current release — `pip install "assemblyai>=1.5.4"` (or `pip install -U assemblyai`) |
 | `aai.SpeechModel.universal_3_5_pro` in Python SDK | Use raw strings: `"universal-3-5-pro"`, `"universal-2"` — these enum aliases don't exist in the SDK |
 | `aai.Lemur(...)` / `client.lemur` in the SDKs | **Removed** — Python 1.0.0 and Node 4.37.0 deleted the LeMUR surface entirely (the endpoints answer 404). Transcribe, then send `transcript.text` to the LLM Gateway |
 | `pip install "assemblyai[extras]"` | **Removed in Python 1.0.0** — the `[extras]` option fails outright. Use `pip install -U assemblyai` |
@@ -256,11 +288,12 @@ Read the relevant reference file based on what the user needs:
 | `references/python-sdk.md` | Python SDK patterns and examples |
 | `references/js-sdk.md` | JavaScript/TypeScript SDK patterns |
 | `references/streaming.md` | Real-time/streaming STT, v3 protocol, temp tokens, error codes |
+| `references/dictation.md` | Dictation API: transcript + LLM rewrite in one call, `llm_instruction`, `stt_prompt`/`keyterms_prompt`, chunked upload while recording, pre-warming, error shapes, Python/Node SDK surface |
 | `references/voice-agents.md` | Voice agent integrations: LiveKit, Pipecat, turn detection, latency optimization |
 | `references/llm-gateway.md` | Applying LLMs to transcripts, tool calling, available models |
 | `references/speech-understanding.md` | Translation, speaker identification, custom formatting, summarization, action items (docs now group most transcript-analysis features here) |
 | `references/audio-intelligence.md` | PII redaction, diarization, sentiment, entity detection, topics — docs re-homed these under Speech Understanding & Guardrails, but the top-level request params are unchanged |
-| `references/api-reference.md` | Full parameter list, export endpoints, webhooks, upload, PII policies, Sync STT API, Voice Agents REST API (stored agents, sessions, built-in tools, HTTP-tool headers, BYO LLM, webhook subscriptions) |
+| `references/api-reference.md` | Full parameter list, export endpoints, webhooks, upload, PII policies, Sync STT API, Dictation API, Voice Agents REST API (stored agents, sessions, built-in tools, HTTP-tool headers, BYO LLM, webhook subscriptions) |
 
 ## API Spec Source of Truth
 

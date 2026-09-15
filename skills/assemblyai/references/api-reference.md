@@ -475,9 +475,113 @@ curl -X POST https://sync.assemblyai.com/v1/transcribe \
   -F 'config={"prompt":"Customer voice message about an online order.","keyterms_prompt":["AssemblyAI"],"timestamps":true};type=application/json'
 ```
 
-When to use: short pre-recorded clips needing an immediate response (voice messages, short call recordings, externally-segmented voice-agent utterances). For audio > 120s use the async REST API; for live mic audio use Streaming.
+When to use: short pre-recorded clips needing an immediate response (voice messages, short call recordings, externally-segmented voice-agent utterances). For audio > 120s use the async REST API; for live mic audio use Streaming. For a cleaned-up/reshaped version of the utterance alongside the verbatim transcript, use the Dictation API (§17).
 
-## 17. Voice Agents REST API (Stored Agents)
+## 17. Dictation API (Short-Form Dictation, Transcript + Rewrite)
+
+A **separate service** from Sync STT (§16) with its own hostname and request shape: one spoken utterance (≤120s) in, the **verbatim transcript plus an LLM-rewritten, send-ready version** out, in a single request/response. Cleanup runs by default (filler removed, self-corrections resolved, punctuation/capitalization applied); `llm_instruction` asks for a different shape. Runs on Universal-3.5 Pro, 32 languages. Full guidance in `references/dictation.md`.
+
+### Endpoint
+
+```
+POST https://dictation.assemblyai.com/v1/transcribe/live
+```
+
+- `dictation.assemblyai.com` — global default (routes to nearest US or EU region)
+- `dictation.us.assemblyai.com` — US residency (us-east-1, us-east-2, us-west-1, us-west-2)
+- `dictation.eu.assemblyai.com` — EU residency (eu-central-1, eu-north-1, eu-south-1, eu-south-2, eu-west-1, eu-west-3)
+
+`/v1` only — there is no unversioned alias. `/v1/transcribe/stream` is the path it shipped under and still works. No URL ingestion, no upload step, no job ID, no polling.
+
+**Pre-warming:** `GET https://dictation.assemblyai.com/warm` (unauthenticated; `/v1/warm` also works — the SDKs use it) returns `200 {"warm":"toasty"}` and leaves a connection in your client's pool. Per host, per client, shortly before the request.
+
+### Headers
+
+| Header | Required | Notes |
+|--------|----------|-------|
+| `Authorization` | Yes | `YOUR_API_KEY` — raw key, **no Bearer prefix**. Missing → `401 "Missing Authorization header"`; invalid → `401 "Invalid API key"`. |
+
+No model header — unlike Sync STT there is no `X-AAI-Model`.
+
+### Request Body (`multipart/form-data`)
+
+| Part | Content-Type | Notes |
+|------|-------------|-------|
+| `config` | `application/json` | **Required, must be the first part.** JSON object; `{}` for defaults (including the default rewrite). The server starts transcribing as audio arrives and cannot start without it — audio-first or no config → `400`. |
+| `audio` | `audio/wav` or `audio/pcm` | **Required.** ≤120s, 16-bit. May be uploaded in chunks as captured. Compressed formats (MP3, M4A, FLAC, OGG, WebM) → `415`. |
+
+`config` fields — **exactly these**; an unknown field is rejected with `400`, not ignored:
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `sample_rate` | integer | Hz (e.g. `16000`). **Required for `audio/pcm`**, ignored for WAV. |
+| `channels` | integer | **Required for `audio/pcm`**, ignored for WAV. |
+| `language_codes` | string[] | Always a list. Default `["en"]`. 32 codes: en, es, de, fr, it, pt, tr, nl, sv, no, da, fi, hi, vi, ar, he, ja, ur, zh, ko, ca, gl, ru, ro, et, fa, yue, af, mr, zu, xh, nn. Other → `400` (the `detail` lists the set). |
+| `stt_prompt` | string | ≤**6000** chars. Contextual *description* of the audio, prepended to the built-in transcription prompt. Alias `prompt`; sending both → `400`. |
+| `keyterms_prompt` | string[] | ≤**100 terms / 8000 chars** total. Exact strings to bias toward. Aliases `keyterms` / `word_boost` accepted — send only one of the three or `400`. |
+| `llm_instruction` | string \| null | ≤**2048** chars. Plain-English rewrite task; **replaces** the default cleanup. Omit or `null` to keep the default. Describe only the transformation — output-format / "don't answer the text" / "leave clean input alone" rules are enforced server-side. |
+
+There is **no** `model`, `timestamps`, `conversation_context`, `speaker_labels`, or `redact_pii`.
+
+### Response
+
+```json
+{
+  "text": "Um, patient presents with, uh, a persistent cough for about two weeks.",
+  "words": [{ "text": "Um", "confidence": 0.82 }, { "text": "patient", "confidence": 0.97 }],
+  "confidence": 0.94,
+  "llm_response": "Patient presents with a persistent cough for about two weeks.",
+  "llm_error": null,
+  "audio_duration_ms": 5120,
+  "session_id": "eb92c4ff-4bbb-429f-9b99-7279d7fe738f",
+  "request_time_ms": 812.4,
+  "sync_time_ms": 430.1,
+  "auth_time_ms": 24.6
+}
+```
+
+- `text` is **always the verbatim transcript**, never touched by the LLM; the rewrite is in `llm_response`.
+- `words[]` carries `text` + `confidence` only — **no `start`/`end`** (Dictation has no `timestamps` option).
+- **The rewrite is best-effort.** On failure the call is still `200` with `llm_response: null` and `llm_error: "timeout"` (5s internal deadline) or `"error"`. Fall back to `text`; never treat non-null `llm_error` as a failed request. SDKs derive `final_text` = `llm_response ?? text`.
+- `sync_time_ms` and `auth_time_ms` are portions of `request_time_ms`. Include `session_id` in support requests.
+
+### Audio Requirements
+
+| Constraint | Value |
+|------------|-------|
+| Max duration | 120 s |
+| Sample width | 16-bit only |
+| Formats | WAV (`audio/wav`) or raw PCM S16LE (`audio/pcm`) — compressed formats rejected (`415`) |
+
+### Error Codes
+
+Two body shapes: `{status, title, detail}` for most errors, `{error, error_code}` (in practice `error_code: "bad_request"`) only for failures while parsing the request itself. Read `detail`, fall back to `error`.
+
+| HTTP | Shape | Cause |
+|------|-------|-------|
+| 400 | `error`/`error_code` | Missing/empty `audio`; missing `config` or `config` after `audio`; `config` not valid JSON; body not multipart |
+| 400 | `status`/`title`/`detail` | Valid JSON `config` that fails validation: unknown field, over a length cap, unsupported language code, both `stt_prompt` and `prompt` |
+| 401 | `status`/`title`/`detail` | Missing `Authorization` header or invalid key |
+| 413 | `status`/`title`/`detail` | Audio exceeded the size cap (can arrive **mid-upload** on a chunked request) |
+| 415 | `status`/`title`/`detail` | `audio` part not `audio/wav` / `audio/pcm` |
+| 429 | `status`/`title`/`detail` | Rate limited — back off, honor `Retry-After` |
+| 502 / 504 | `status`/`title`/`detail` | Transcription upstream unavailable / timed out — retry once, then surface |
+| 503 | `status`/`title`/`detail` | At capacity — back off, honor `Retry-After` |
+
+Set the client timeout to 90s. A chunked body cannot be replayed — keep the audio in memory to retry.
+
+### Example
+
+```bash
+curl -X POST https://dictation.assemblyai.com/v1/transcribe/live \
+  -H 'Authorization: YOUR_API_KEY' \
+  -F 'config={"stt_prompt": "A doctor dictating a patient visit note.", "keyterms_prompt": ["amoxicillin", "lisinopril", "metoprolol"], "llm_instruction": "Remove filler words and rewrite as a concise clinical chart note."};type=application/json' \
+  -F 'audio=@sample.wav;type=audio/wav'
+```
+
+**SDKs:** `DictationTranscriber` / `AsyncDictationTranscriber` in Python ≥1.5.2 (`assemblyai.dictation.v1`; `aai.settings.dictation_base_url` for residency) and `client.dictation` in Node ≥4.40.0 (`dictationBaseUrl` client option). Install the current releases (Python 1.5.4, Node 4.41.1); on an older SDK, call over HTTP. See `references/dictation.md`.
+
+## 18. Voice Agents REST API (Stored Agents)
 
 A REST API for creating **reusable** voice agents. An agent stores its `system_prompt`, `greeting`, `voice`, `tools`, `input`, and `output` server-side; you then bind a WebSocket session to it by sending `{"agent_id": "<id>"}` as the only field in your first `session.update` (see `references/voice-agents.md`). The same stored agent can be reused across the WebSocket API, browser, or Twilio.
 
@@ -539,7 +643,7 @@ Point an agent at your own **OpenAI-compatible** chat-completions endpoint inste
 - Must support **streamed** chat completions. Send `"llm": []` to switch back to the managed model.
 - To use a frontier model without your own provider account, point `base_url` at the **LLM Gateway** (`https://llm-gateway.assemblyai.com/v1`, EU: `https://llm-gateway.eu.assemblyai.com/v1`) and pass your AssemblyAI key as `api_key`.
 
-## 18. Voice Agent Webhooks API
+## 19. Voice Agent Webhooks API
 
 A REST API (base URL `https://agents.assemblyai.com`, same auth) to subscribe URLs to Voice Agent lifecycle events.
 

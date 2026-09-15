@@ -21,11 +21,12 @@ LLM training data contains outdated AssemblyAI patterns — deprecated LeMUR API
 |------|---------|
 | **Pre-recorded transcription** | Universal-3.5 Pro, Universal-2, prompting, speech_models fallback |
 | **Streaming STT** | v3 protocol, v2 legacy, Whisper Streaming, temp tokens, error codes |
+| **Dictation API** | Verbatim transcript + LLM-cleaned rewrite in one call, `llm_instruction`, `stt_prompt`/`keyterms_prompt`, upload-while-recording, pre-warming, error shapes, SDK availability |
 | **Voice agents** | LiveKit and Pipecat integrations, universal-3-5-pro defaults, turn detection, silence tuning, latency optimization |
 | **LLM Gateway** | Chat completions, tool calling, agentic workflows, structured output caveats, full model list |
 | **Audio intelligence** | PII redaction, diarization, summarization, sentiment, entity detection, content safety, chapters |
 | **Speech understanding** | Translation, speaker identification, custom formatting |
-| **SDKs** | Current Python (`1.1.0`) and JS/TS (`4.37.1`) patterns, the 0.x→1.x Python migration, Ruby status, discontinued SDK warnings |
+| **SDKs** | Current Python (`1.5.4`) and JS/TS (`4.41.1`) patterns, the 0.x→1.x Python migration, registry-lag caveats, Ruby status, discontinued SDK warnings |
 | **API reference** | Full parameter list, export endpoints, webhooks, custom spelling, multichannel, code switching |
 
 ## Installation
@@ -71,7 +72,7 @@ Copy the `skills/assemblyai/` directory into your project and add a rule or inst
 
 ## Skill structure
 
-The skill uses progressive disclosure to keep context usage efficient. The core `SKILL.md` (122 lines) is always loaded and contains auth patterns, model overview, common mistakes, and gotchas. Detailed reference files are only loaded when relevant:
+The skill uses progressive disclosure to keep context usage efficient. The core `SKILL.md` (~300 lines) is always loaded and contains auth patterns, model overview, common mistakes, and gotchas. Detailed reference files are only loaded when relevant:
 
 ```
 skills/
@@ -81,6 +82,7 @@ skills/
         ├── python-sdk.md             # Python SDK patterns
         ├── js-sdk.md                 # JS/TS SDK patterns
         ├── streaming.md              # Streaming STT protocol details
+        ├── dictation.md              # Dictation API: transcript + rewrite
         ├── voice-agents.md           # LiveKit, Pipecat integrations
         ├── llm-gateway.md            # LLM Gateway models and usage
         ├── speech-understanding.md   # Translation, speaker ID, formatting

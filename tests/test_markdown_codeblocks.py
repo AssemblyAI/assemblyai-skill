@@ -156,6 +156,11 @@ def _skip_live_python_execution(block: CodeBlock) -> bool:
     if any(package in block.code for package in ("livekit", "pipecat")):
         return True
 
+    # Dictation SDK examples need assemblyai>=1.5.2 (not on PyPI as of Sept 2026)
+    # and the microphone examples block on input(); only compile them.
+    if any(symbol in block.code for symbol in ("DictationTranscriber", "sounddevice")):
+        return True
+
     if block.path.name == "voice-agents.md" and any(
         symbol in block.code for symbol in ("AssemblyAISTTService(", "TelnyxTransport(")
     ):
