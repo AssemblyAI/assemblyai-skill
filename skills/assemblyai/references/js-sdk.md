@@ -1,10 +1,12 @@
 # AssemblyAI JavaScript/TypeScript SDK Reference
 
 ```bash
-npm i assemblyai@^4.37.1
+npm i assemblyai@^4.41.1
 ```
 
-**4.37.1 is the latest release (Sept 1, 2026).** Install it, or `npm i assemblyai@latest` for whatever is newest if you are reading this later. Requires Node `>=18`. The matched Python version is `assemblyai>=1.1.0`, which shipped the same day.
+**4.41.1 is the latest release (Sept 11, 2026).** Install it, or `npm i assemblyai@latest` for whatever is newest if you are reading this later. Requires Node `>=18`. The matched Python version is `assemblyai>=1.5.4` (Sept 14, 2026).
+
+Anything below **4.40.0** has no `client.dictation`, and below **4.38.0** no `client.llmGateway` — check `npm ls assemblyai` before writing code against them in an existing project, and fall back to raw `fetch` (see `references/dictation.md`) if the project can't upgrade yet.
 
 The oldest release with the current API surface is **4.37.0** (Aug 28, 2026), which **removed LeMUR** (`client.lemur`, `LemurService`, and every Lemur request/response type) — the counterpart to Python 1.0.0 doing the same. Nothing else broke in it: no renames, no signature changes, so upgrading from 4.36.x is a drop-in unless you called `client.lemur`.
 
@@ -14,6 +16,9 @@ Recent additions worth knowing about, newest first:
 
 | Version | Change |
 |---------|--------|
+| 4.41.1 | Dictation/sync config caps raised to match the service (`stt_prompt` 6000, keyterms 100 / 8000, `llm_instruction` 2048); `universal-3-6` streaming model |
+| 4.40.0 | **`client.dictation`** for the Dictation API (§11); `client.sync.transcribeLive()` / `openLive()` streaming upload; no-speech fallback options for transcripts |
+| 4.38.0 | `client.llmGateway` (`chatCompletions()`, `listModels()`, `understanding()`), `llmGatewayBaseUrl` option, `LlmGatewayError` |
 | 4.37.1 | `universal-3-6-pro` added to `StreamingSpeechModel`. Not yet in the public docs or model picker — keep using `universal-3-5-pro` |
 | 4.37.0 | **LeMUR removed.** Use the LLM Gateway (§9) |
 | 4.36.7 | `StreamingTranscriber.close()` no longer hangs when the socket closes without a `Termination` message; new optional `terminationTimeout` argument on `close()` (5000ms default, `0` waits indefinitely) |
@@ -357,3 +362,54 @@ console.log(result.text);
 ```
 
 The first argument accepts a local file path, raw audio bytes, a Blob, or a readable stream — **not a URL**. The config (second argument) mirrors the REST `config` part: `model`, `prompt`, `keyterms_prompt`, `conversation_context`, `language_codes`, `timestamps`, and `sample_rate`/`channels` for raw PCM. Word `start`/`end` appear only when `timestamps: true`. The client-side request timeout defaults to 60s (see `SyncTranscribeOptions`). See `references/api-reference.md` §16 for limits and error codes.
+
+---
+
+## 11. Dictation (Short-Form Dictation, ≤120s, Transcript + Rewrite)
+
+`client.dictation` is a `DictationTranscriber` wrapping the **Dictation API** (`dictation.assemblyai.com`) — a separate service from `client.sync` that returns the verbatim transcript **and** an LLM-cleaned, send-ready rewrite in one call. Cleanup runs by default; `llm_instruction` asks for a different shape.
+
+**Version gate:** added in **4.40.0** (Sept 11, 2026); install the current **4.41.1**. Anything older (e.g. 4.37.x) has no `client.dictation` — check `npm ls assemblyai` in an existing project and fall back to the raw `fetch` example in `references/dictation.md` if it can't upgrade yet.
+
+```typescript
+import { AssemblyAI } from "assemblyai";
+
+const client = new AssemblyAI({
+  apiKey: process.env.ASSEMBLYAI_API_KEY!,
+  // dictationBaseUrl: "https://dictation.eu.assemblyai.com", // US/EU data residency
+});
+
+await client.dictation.warm(); // optional: as soon as you know audio is coming (idempotent)
+
+const result = await client.dictation.transcribeLive("/path/to/local/recording.wav", {
+  stt_prompt: "A doctor dictating a patient visit note.", // context, not instructions (≤6000 chars)
+  keyterms_prompt: ["amoxicillin", "lisinopril", "metoprolol"], // ≤100 terms / 8000 chars
+  llm_instruction: "Remove filler words and rewrite as a concise clinical chart note.", // ≤2048 chars
+});
+
+console.log(result.text); // verbatim transcript — never altered by the LLM
+console.log(result.llm_response); // the rewrite, or null if the best-effort rewrite failed
+console.log(result.final_text); // llm_response ?? text (derived by the SDK)
+```
+
+- `transcribeLive(audio, config?, options?)` accepts a local path, a data URL, `Uint8Array`/`ArrayBuffer`, `Blob`/`File`, a web `ReadableStream`, a Node stream, or any (async) iterable of `Uint8Array` chunks — the request starts immediately and uploads as chunks arrive. **Not an http(s) URL** (throws; use `client.transcripts` for URLs). `options`: `{ timeout?: number /* default 300_000 ms for the whole request */, signal?: AbortSignal }`.
+- `openLive(config?, options?)` is the **push-style** counterpart for callback-driven sources — returns a `DictationLiveSession`: `session.write(chunk)` (never blocks), `session.close()` ends the audio, `await session.result()` resolves the `DictationResponse`, `session.abort()` drops the request.
+- **Raw PCM** needs `sample_rate` **and** `channels` in the config (setting either marks the audio as PCM and both become required); leave both unset for WAV. Compressed formats are rejected by the service with `415`.
+- `DictationConfig` is exactly `{ sample_rate, channels, language_codes, stt_prompt, keyterms_prompt, llm_instruction }` — **no** `model`, `prompt`, `timestamps`, or `conversation_context` (those are `client.sync`). Caps are validated client-side; keyterms are trimmed and empties dropped.
+- `DictationResponse`: `text`, `words[{text, confidence}]` (no timestamps), `confidence`, `llm_response`, `llm_error`, `audio_duration_ms`, `session_id`, `request_time_ms`, `sync_time_ms`, plus the SDK-derived `final_text`. Never treat a non-null `llm_error` as a failed request.
+- Failures throw `DictationError` (`.status`, `.errorCode`, `.retryAfter`). Auth, rate-limit, size and capacity errors can surface **mid-upload**.
+
+```typescript
+import { AssemblyAI } from "assemblyai";
+
+const client = new AssemblyAI({ apiKey: process.env.ASSEMBLYAI_API_KEY! });
+
+// Push-style: raw S16LE PCM from a microphone callback.
+const session = client.dictation.openLive({ sample_rate: 16000, channels: 1 });
+mic.on("data", (chunk) => session.write(chunk));
+mic.on("end", () => session.close());
+const { final_text } = await session.result();
+console.log(final_text);
+```
+
+See `references/dictation.md` for the endpoint, config limits, error shapes, and the raw-`fetch` fallback.

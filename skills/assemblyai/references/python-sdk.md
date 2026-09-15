@@ -3,12 +3,22 @@
 ## Installation
 
 ```bash
-pip install "assemblyai>=1.1.0"
+pip install "assemblyai>=1.5.4"
 ```
 
-**1.1.0 is the latest release (Sept 1, 2026).** Install it, or `pip install -U assemblyai` for whatever is newest if you are reading this later. The matched JS/TS version is `assemblyai@^4.37.1`, which shipped the same day.
+**1.5.4 is the latest release (Sept 14, 2026).** Install it, or `pip install -U assemblyai` for whatever is newest if you are reading this later. The matched JS/TS version is `assemblyai@^4.41.1` (Sept 11, 2026).
 
-Most 0.x code runs on 1.x unchanged, but four things were removed or renamed in 1.0.0 (Aug 14, 2026) — see §13 for the full migration. 1.0.0 is the oldest release with the current API surface; anything on 0.x is a different SDK generation.
+Anything below **1.5.2** has no `DictationTranscriber` — check `pip show assemblyai` before writing code against it in an existing project.
+
+What 1.3.0 → 1.5.4 added, newest first:
+
+| Version | Change |
+|---------|--------|
+| 1.5.4 | Speech Understanding configurable through `TranscriptionConfig`; `universal-3-6` added to the streaming `SpeechModel` enum |
+| 1.5.2 | **Dictation API** (§12): `DictationTranscriber`, `AsyncDictationTranscriber`, `DictationConfig` (incl. `stt_prompt`), `DictationError`, `settings.dictation_base_url`; Sync STT streaming upload via `SyncTranscriber.transcribe_live()` / push-style `open_live()`; sync and dictation config caps raised to match the service |
+| 1.3.0 | `short_file_diarization_method` on `SpeakerOptions`; `localization` on `language_detection_options`; PEP 561 `py.typed` marker |
+
+Most 0.x code runs on 1.x unchanged, but four things were removed or renamed in 1.0.0 (Aug 14, 2026) — see §14 for the full migration. 1.0.0 is the oldest release with the current API surface; anything on 0.x is a different SDK generation.
 
 ## Authentication
 
@@ -49,6 +59,7 @@ Each product lives in a versioned subpackage. New code should import from it —
 |---------|--------|
 | Pre-recorded / async | `from assemblyai.prerecorded.v2 import Transcriber, AsyncTranscriber, Transcript, TranscriptionConfig` |
 | Sync STT (≤120s) | `from assemblyai.sync.v1 import SyncTranscriber, AsyncSyncTranscriber, SyncTranscriptionConfig` |
+| Dictation (≤120s, transcript + rewrite; SDK ≥1.5.2) | `from assemblyai.dictation.v1 import DictationTranscriber, AsyncDictationTranscriber, DictationConfig, DictationError` |
 | Streaming / realtime | `from assemblyai.streaming.v3 import RealTimeTranscriber, RealTimeTranscriberOptions, RealTimeParameters` |
 
 Cross-cutting names are **not** re-exported by the subpackages — import `TranscriptStatus`, `TranscriptError`, `Settings`, `Client`, `AsyncClient`, and the global `settings` from the top-level package. Mixing both styles in one file is normal and expected.
@@ -461,9 +472,68 @@ Accepts a local file path, raw bytes, or a stream — **not a URL**. There is al
 
 ---
 
-## 12. Asyncio Support
+## 12. Dictation (Short-Form Dictation, ≤120s, Transcript + Rewrite)
 
-Every product has an asyncio transcriber: `AsyncTranscriber` (`prerecorded.v2`), `AsyncSyncTranscriber` (`sync.v1`), and `AsyncRealTimeTranscriber` (`streaming.v3`).
+`DictationTranscriber` (`assemblyai.dictation.v1`, also `aai.DictationTranscriber`) wraps the **Dictation API** (`dictation.assemblyai.com`) — a separate service from Sync STT that returns the verbatim transcript **and** an LLM-cleaned, send-ready rewrite in one call. Cleanup runs by default; `llm_instruction` asks for a different shape.
+
+**Version gate:** added in **1.5.2** (Sept 11, 2026); install the current **1.5.4**. Anything older (e.g. 1.3.0) has no `DictationTranscriber` — check `pip show assemblyai` in an existing project and fall back to the raw HTTP example in `references/dictation.md` if it can't upgrade yet.
+
+```python
+import assemblyai as aai
+from assemblyai.dictation.v1 import DictationConfig, DictationTranscriber
+
+aai.settings.api_key = "YOUR_API_KEY"
+aai.settings.keepalive_expiry = 30  # keep the warmed connection through the recording
+
+config = DictationConfig(
+    stt_prompt="A doctor dictating a patient visit note.",  # context, not instructions (≤6000 chars)
+    keyterms_prompt=["amoxicillin", "lisinopril", "metoprolol"],  # ≤100 terms / 8000 chars
+    llm_instruction="Remove filler words and rewrite as a concise clinical chart note.",  # ≤2048 chars
+)
+
+with DictationTranscriber() as transcriber:
+    transcriber.warm()  # optional: as soon as you know audio is coming
+    result = transcriber.transcribe_live("/path/to/local/recording.wav", config)
+
+print(result.text)        # verbatim transcript — never altered by the LLM
+print(result.llm_response)  # the rewrite, or None if the best-effort rewrite failed
+print(result.final_text)  # llm_response, falling back to text
+```
+
+- `transcribe_live(data, config=None)` takes a local path, raw bytes, a binary file object, **or an iterator of PCM chunks** — the request starts immediately and uploads as you produce, so most of the utterance is uploaded by the time the speaker stops. **Not a URL** (`ValueError`).
+- `open_live(config=None)` is the **push-style** counterpart for callback-driven sources (a mic library, a WebRTC track, a telephony stream): returns a `DictationLiveSession` — `session.write(chunk)` from any thread (never blocks), `session.close()` ends the audio, `session.result()` returns the `DictationResponse`, `session.abort()` drops the request. As a context manager, a clean exit closes and an exception aborts.
+- **Raw PCM** needs `sample_rate` **and** `channels` on `DictationConfig` (setting either marks the audio as `audio/pcm`; leave both unset for WAV). Compressed formats are rejected by the service with `415`.
+- `DictationConfig` is `extra="forbid"` and validates the caps client-side: `sample_rate`, `channels`, `language_codes` (a list, e.g. `["es"]`), `stt_prompt`, `keyterms_prompt` (whitespace stripped, empties dropped), `llm_instruction`. **No** `model`, `prompt`, `timestamps`, or `conversation_context` — those are `SyncTranscriptionConfig`.
+- `DictationResponse.final_text` is a property: `llm_response` when present, else `text`. Never treat a non-`None` `llm_error` (`"timeout"` / `"error"`) as a failed request.
+- Failures raise `DictationError` (`status_code`, `error_code`, `retry_after` — seconds from `Retry-After` on 429/503, `None` when absent). Constructor takes `api_key=`, `client=`, a default `config=`, and `max_workers=` (thread pool for `open_live` sessions).
+- Settings: `aai.settings.dictation_base_url` (default `https://dictation.assemblyai.com`; set `dictation.us.` / `dictation.eu.` for residency) and `aai.settings.dictation_http_timeout` (300s, per socket operation).
+- `AsyncDictationTranscriber` has the same surface (`await transcribe_live(...)`, `open_live(...)` → `AsyncDictationLiveSession`, awaitable `warm()`); `asyncio.create_task(transcriber.warm())` overlaps the handshake with the recording.
+
+```python
+import assemblyai as aai
+import sounddevice as sd
+
+aai.settings.api_key = "YOUR_API_KEY"
+config = aai.DictationConfig(sample_rate=16000, channels=1)  # raw PCM: both required
+
+with aai.DictationTranscriber() as transcriber:
+    with transcriber.open_live(config) as session:
+        stream = sd.RawInputStream(
+            samplerate=16000, channels=1, dtype="int16",
+            callback=lambda data, *_: session.write(bytes(data)),
+        )
+        with stream:
+            input("Dictating, press Enter to stop... ")
+    print(session.result().final_text)
+```
+
+See `references/dictation.md` for the endpoint, config limits, error shapes, and the raw-HTTP fallback.
+
+---
+
+## 13. Asyncio Support
+
+Every product has an asyncio transcriber: `AsyncTranscriber` (`prerecorded.v2`), `AsyncSyncTranscriber` (`sync.v1`), `AsyncDictationTranscriber` (`dictation.v1`, ≥1.5.2), and `AsyncRealTimeTranscriber` (`streaming.v3`).
 
 The async HTTP transcribers hold a connection pool, so use them as async context managers and the pool is always released:
 
@@ -489,7 +559,7 @@ asyncio.run(main())
 
 ---
 
-## 13. Migrating from 0.x to 1.x
+## 14. Migrating from 0.x to 1.x
 
 Most 0.x code runs on 1.x unchanged. No method signature was narrowed, every argument that worked in 0.x still works, and the new ones are optional keywords. Four things actually break:
 
@@ -514,6 +584,7 @@ Worth adopting once you are on 1.x:
 | `if transcript.status == TranscriptStatus.error:` | A failed transcription is **returned, not raised** — `text` and `words` are `None` |
 | `async with AsyncTranscriber(...)` | Releases the HTTP connection pool |
 | `SyncTranscriber.warm()` + `settings.keepalive_expiry` | Keeps the DNS + TCP + TLS handshake off the critical path (§11) |
+| `DictationTranscriber().transcribe_live(...)` → `result.final_text` | Verbatim transcript + cleaned-up rewrite in one call for dictation flows (§12, SDK ≥1.5.2); no separate LLM Gateway round-trip needed |
 | `transcribe(pathlib.Path(...))` | `Path` is accepted directly; no `str()` wrapping |
 | `from assemblyai.prerecorded.v2 import Transcriber` | States the product and API version you are pinned to |
 

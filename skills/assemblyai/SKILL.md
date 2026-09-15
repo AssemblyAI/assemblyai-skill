@@ -33,8 +33,8 @@ Authorization: YOUR_API_KEY
 
 | Language | Install | Status |
 |----------|---------|--------|
-| Python | `pip install "assemblyai>=1.1.0"` | Active |
-| JavaScript/TypeScript | `npm i assemblyai@^4.37.1` | Active |
+| Python | `pip install "assemblyai>=1.5.4"` | Active |
+| JavaScript/TypeScript | `npm i assemblyai@^4.41.1` | Active |
 | Ruby | `assemblyai` gem | Active |
 | Java | `assemblyai-java-sdk` | **Discontinued April 2025** |
 | Go | `assemblyai-go-sdk` | **Discontinued April 2025** |
@@ -44,7 +44,9 @@ Authorization: YOUR_API_KEY
 
 ### SDK versions
 
-**Install the latest of each: Python `1.1.0` and Node `4.37.1`, both released Sept 1, 2026.** These two are a matched pair — they shipped the same day with the same change. The two SDKs version independently (the JS/TS SDK has been on 4.x since December 2023), so there is no shared version number to match on; match on the release carrying the same change instead.
+**Install the latest of each: Python `1.5.4` (Sept 14, 2026) and Node `4.41.1` (Sept 11, 2026).** These are the current releases and the first pair to carry the **Dictation API** (`DictationTranscriber` / `client.dictation`, added in Python 1.5.2 and Node 4.40.0), streaming sync uploads (`transcribe_live()` / `transcribeLive()`), the Node `client.llmGateway` service (4.38.0), and the `universal-3-6` streaming model. The two SDKs version independently (the JS/TS SDK has been on 4.x since December 2023), so there is no shared version number to match on; match on the release carrying the same change instead.
+
+Always check the installed version (`pip show assemblyai` / `npm ls assemblyai`) before writing code against `DictationTranscriber` or `client.dictation` in an existing project — anything older than the versions above has no dictation surface.
 
 If you are reading this well after Sept 2026, take whatever is newest — `pip install -U assemblyai` and `npm i assemblyai@latest` — rather than pinning the versions above. The absolute minimum that still has the current API surface is **Python 1.0.0** (Aug 14, 2026) and **Node 4.37.0** (Aug 28, 2026), the pair that removed LeMUR; anything older than that is a different SDK generation.
 
@@ -155,7 +157,7 @@ A **separate service** (own hostname, own request shape — not Sync, not Pre-re
 - **Upload while recording:** the body streams, so open the request when the user starts speaking and push PCM frames as captured (config first; don't go silent mid-body; a chunked body can't be replayed — keep audio in memory to retry)
 - **Pre-warming:** `GET https://dictation.assemblyai.com/warm` (unauthenticated, `200 {"warm":"toasty"}`; `/v1/warm` also works) — same client and same host as the transcription, shortly before it
 - **Errors:** two shapes — `{status, title, detail}` for most, `{error, error_code}` only for request-parsing failures; read `detail` then fall back to `error`. 429/502/503/504 transient; 400/413/415 fix the request; 401 fix the key. Client timeout 90s
-- **SDKs:** `DictationTranscriber` (Python **≥1.5.2**, `assemblyai.dictation.v1`) and `client.dictation` (Node **≥4.40.0**) — both GitHub releases of Sept 11, 2026 that **had not reached PyPI (1.3.0) or npm (4.37.1) as of Sept 14, 2026**. Check the published version before using the SDK path; otherwise call the endpoint over HTTP. See `references/dictation.md`
+- **SDKs:** `DictationTranscriber` (Python **≥1.5.2**, `assemblyai.dictation.v1`; install the current 1.5.4) and `client.dictation` (Node **≥4.40.0**; install the current 4.41.1), both from Sept 11, 2026. Check the installed version before using the SDK path in an existing project; on an older SDK, call the endpoint over HTTP. See `references/dictation.md`
 
 ```bash
 curl -X POST https://dictation.assemblyai.com/v1/transcribe/live \
@@ -257,10 +259,10 @@ See `references/llm-gateway.md` for models, tool calling, structured outputs, an
 | Treating Dictation `llm_error` as a failed request | The rewrite is best-effort — a `200` with `llm_response: null` and `llm_error: "timeout"`/`"error"` still carries the verbatim `text`. Fall back to `text` (SDK: `final_text`) |
 | Dictation `language_codes: "es"` (string) or `language_code` | It's always a **list**: `language_codes: ["es"]` |
 | Passing `model`, `timestamps`, `conversation_context`, `speaker_labels`, or `redact_pii` in Dictation `config` | Unknown fields → `400`. Dictation's config is exactly `sample_rate`, `channels`, `language_codes`, `stt_prompt`, `keyterms_prompt`, `llm_instruction` |
-| `aai.DictationTranscriber` / `client.dictation` on a published SDK | Only in Python ≥1.5.2 / Node ≥4.40.0 (GitHub, Sept 11, 2026) — **not** in PyPI 1.3.0 or npm 4.37.1 as of Sept 14, 2026. Verify the installed version; otherwise use raw HTTP |
+| `aai.DictationTranscriber` / `client.dictation` on an older SDK | Only in Python ≥1.5.2 / Node ≥4.40.0 (Sept 11, 2026) — install the current 1.5.4 / 4.41.1. Verify the installed version; otherwise use raw HTTP |
 | Hardcoding v2 streaming URL | v3 (`/v3/ws`) is current; v2 still works but is legacy |
 | Using `speech_model=u3-rt-pro` for streaming | **Removed July 2026** from the model picker and streaming spec enum — superseded by `universal-3-5-pro` (the streaming default). From **September 2, 2026** `u3-rt-pro` connections are silently redirected to `universal-3-5-pro`. Set a different model only for cost tradeoffs (`universal-streaming-english`/`-multilingual`) |
-| Python SDK rejects `universal-3-5-pro` | The SDK validates `speech_model` locally against an enum, and pre-`0.64.21` releases omit `universal-3-5-pro`. Install the current release — `pip install "assemblyai>=1.1.0"` |
+| Python SDK rejects `universal-3-5-pro` | The SDK validates `speech_model` locally against an enum, and pre-`0.64.21` releases omit `universal-3-5-pro`. Install the current release — `pip install "assemblyai>=1.5.4"` (or `pip install -U assemblyai`) |
 | `aai.SpeechModel.universal_3_5_pro` in Python SDK | Use raw strings: `"universal-3-5-pro"`, `"universal-2"` — these enum aliases don't exist in the SDK |
 | `aai.Lemur(...)` / `client.lemur` in the SDKs | **Removed** — Python 1.0.0 and Node 4.37.0 deleted the LeMUR surface entirely (the endpoints answer 404). Transcribe, then send `transcript.text` to the LLM Gateway |
 | `pip install "assemblyai[extras]"` | **Removed in Python 1.0.0** — the `[extras]` option fails outright. Use `pip install -U assemblyai` |

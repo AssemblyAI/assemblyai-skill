@@ -71,7 +71,25 @@
         {"text": "Does NOT install assemblyai[extras] — the extra was removed in Python SDK 1.0.0", "type": "semantic"},
         {"text": "Captures microphone PCM itself (pyaudio, sounddevice, or equivalent) and passes 16-bit PCM chunks to the transcriber's stream() method", "type": "semantic"},
         {"text": "Sets speech_model to universal-3-5-pro and passes sample_rate explicitly (required for PCM)", "type": "semantic"},
-        {"text": "If it pins a version, pins the current assemblyai>=1.1.0 (or at minimum >=1.0.0) rather than a 0.64.x release", "type": "semantic"}
+        {"text": "If it pins a version, pins the current assemblyai>=1.5.4 (or at minimum >=1.0.0) rather than a 0.64.x release", "type": "semantic"}
+      ]
+    },
+    {
+      "id": 6,
+      "eval_name": "dictation-api-clinical-note",
+      "prompt": "I'm building a dictation feature for our clinic's EHR. A doctor taps record, dictates a visit note for up to a minute or so, taps stop, and I want to show them a cleaned-up chart note (no ums, self-corrections resolved) while also storing exactly what they said. Drug names like lisinopril and metoprolol need to come out spelled right. We use AssemblyAI. Show me the backend call in Python.",
+      "expected_output": "A Python implementation calling the Dictation API (POST https://dictation.assemblyai.com/v1/transcribe/live, or DictationTranscriber on Python SDK >=1.5.2) with a config part sent first (stt_prompt describing the dictation, keyterms_prompt with the drug names, llm_instruction for the chart note), WAV/PCM audio, and a response handler that stores `text` verbatim and displays `llm_response` with a fallback to `text` when the rewrite failed.",
+      "files": [],
+      "assertions": [
+        {"text": "Uses the Dictation API (dictation.assemblyai.com/v1/transcribe/live or DictationTranscriber), not Sync STT, the async transcript API, or a separate LLM Gateway call for the cleanup", "type": "semantic"},
+        {"text": "Auth uses the raw API key (no Bearer prefix)", "type": "semantic"},
+        {"text": "If calling over HTTP, sends a multipart body with the `config` JSON part BEFORE the `audio` part (never audio-only)", "type": "semantic"},
+        {"text": "Uses llm_instruction to request the chart-note rewrite (or relies on the default cleanup) — not a prompt/instruction stuffed into stt_prompt or keyterms_prompt", "type": "semantic"},
+        {"text": "Biases the drug names via keyterms_prompt (not word_boost)", "type": "semantic"},
+        {"text": "Stores/keeps `text` as the verbatim transcript and uses `llm_response` (or final_text) for display, falling back to `text` when llm_response is null / llm_error is set — does not treat a rewrite failure as a request failure", "type": "semantic"},
+        {"text": "Sends WAV or raw 16-bit PCM audio (with sample_rate and channels in config for PCM) and does not send MP3/M4A/WebM", "type": "semantic"},
+        {"text": "Does not pass unsupported fields (model, timestamps, conversation_context, speaker_labels, redact_pii) in the dictation config", "type": "semantic"},
+        {"text": "If it uses the SDK, pins assemblyai>=1.5.4 (DictationTranscriber landed in 1.5.2) or otherwise falls back to raw HTTP", "type": "semantic"}
       ]
     }
   ]
