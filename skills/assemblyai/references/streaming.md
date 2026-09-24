@@ -29,6 +29,7 @@ For new realtime/streaming code, use **`speech_model=universal-3-5-pro`** by def
 | `inactivity_timeout` | Seconds of silence before session auto-closes |
 | `speaker_labels` | Enable diarization (`true`/`false`) |
 | `max_speakers` | Integer 1–10. A **hard cap** (strict limit, not a hint) on speaker labels — once reached, additional speakers are merged into the closest existing label rather than given a new one. Give a little headroom above the expected count; setting it too high causes over-splitting. Only used when `speaker_labels` is enabled. |
+| `speaker_labels_revision_interval_ms` | **universal-3-5-pro only.** Integer milliseconds of audio time (added Sept 2026). Controls how often mid-stream `SpeakerRevision` events are emitted when `speaker_labels` is enabled. Unset or `0` emits only the end-of-stream revision; non-zero values are clamped server-side to 120,000–300,000 ms (300,000 recommended). The first revision arrives after ~120s of streamed speech, and a revision is sent only when an earlier turn's speaker assignment changed. Supported in Python SDK (`speaker_labels_revision_interval_ms`, ≥1.6.1) and Node SDK (`speakerLabelsRevisionIntervalMs`, ≥4.41.5). |
 | `domain` | Set to `"medical-v1"` to enable Medical Mode (improves accuracy for medical terminology). Supported models: all streaming models. Supported languages: en, es, de, fr. |
 | `redact_pii` | Enable real-time PII redaction. Default `false`. Only applies to **final turns**. See Streaming PII Redaction below. |
 | `redact_pii_policies` | PII entity types to redact. Pass a comma-separated string (e.g. `person_name,phone_number`) over the raw WebSocket or an array via the SDK. Default: all. |
@@ -60,7 +61,7 @@ For new realtime/streaming code, use **`speech_model=universal-3-5-pro`** by def
 - **Begin:** Session start confirmation, includes session `id`
 - **Turn:** Transcript data with `transcript` text, `end_of_turn` boolean flag, and `words` array
 - **SpeechStarted:** Voice Activity Detection (VAD) event indicating speech has begun (universal-3-5-pro only — use for barge-in detection)
-- **SpeakerRevision:** Revised speaker labels at session close (only when `speaker_labels` is enabled). See Streaming Diarization below.
+- **SpeakerRevision:** Revised speaker labels emitted at session close and optionally mid-stream (only when `speaker_labels` is enabled). See Streaming Diarization below.
 - **LLMGatewayResponse:** LLM analysis result for the completed turn (only present when `llm_gateway` connection parameter is set)
 - **Heartbeat:** Periodic session stats (only when `session_heartbeat=true`): `total_audio_received_ms`, `total_duration_ms`, `realtime_factor` (windowed ingest rate — 1.0 means realtime; sustained values well above 1.0 mean you're sending faster than realtime and heading for a 3007), `max_speech_probability`
 - **Termination:** Session end confirmation
@@ -246,14 +247,30 @@ Explicitly-supplied `min_turn_silence`, `max_turn_silence`, `max_turn_duration`,
 
 ### Revised speaker labels (SpeakerRevision)
 
-When the session ends, the server runs a final refinement pass over the whole conversation and emits a **single `SpeakerRevision` message** (when `speaker_labels` is enabled). It arrives **right before `Termination`**, after the client sends `Terminate`. (Streaming diarization itself is supported across current streaming models; the `SpeakerRevision` message is defined for universal-3-5-pro.)
+When `speaker_labels` is enabled, the server emits `SpeakerRevision` messages containing refined speaker attribution. (Streaming diarization itself is supported across current streaming models; the `SpeakerRevision` message is defined for `universal-3-5-pro`.)
 
-- A session emits **zero or one** `SpeakerRevision` message.
-- It contains a `revisions` array with **only the turns whose speaker labels changed** — unchanged turns are omitted.
-- Each item: `turn_order` (matches the original `Turn`'s `turn_order`), `speaker_label` (corrected, string or null), and `words` (with corrected per-word `speaker`).
+#### End-of-Stream Revision (Default)
+
+By default, the server runs a final refinement pass over the entire session and emits a **single `SpeakerRevision` message** right before `Termination` (after the client sends `Terminate`).
+- A session without mid-stream revisions emits **zero or one** `SpeakerRevision` message.
+- Adds approximately **400ms** of latency at session close; does not affect real-time labels delivered during the call.
+
+#### Mid-Stream Revisions (`speaker_labels_revision_interval_ms`)
+
+To receive revised labels periodically during the session, set `speaker_labels_revision_interval_ms` on connection:
+- **Audio time cadence:** Specifies the interval in milliseconds of audio time (e.g. `120_000` = 2 minutes, `300_000` = 5 minutes).
+- **Server clamping:** Non-zero values are clamped server-side to `120_000`–`300_000` ms (`300_000` ms is recommended). The server rejects values below `0` or above `86_400_000` at connect. Unset or `0` emits only the end-of-stream revision.
+- **Timing:** The first mid-stream revision arrives after approximately ~120s of streamed speech.
+- **Delta-only delivery:** A revision message is sent only when an earlier turn's speaker assignment actually changed. Turns whose labels remain unchanged are omitted from `revisions`.
+- **SDK support:**
+  - Python SDK (≥1.6.1): `speaker_labels_revision_interval_ms` on `RealTimeParameters`.
+  - Node SDK (≥4.41.5): `speakerLabelsRevisionIntervalMs` on `StreamingTranscriberParams`.
+
+#### Applying Revisions
+
+- Each item in `revisions`: `turn_order` (matches the original `Turn`'s `turn_order`), `speaker_label` (corrected string or null), and `words` (with corrected per-word `speaker`).
 - **Text content and word timestamps are never changed** — only speaker assignments.
-- Adds approximately **400ms** of latency at session close; does not affect the real-time labels already delivered.
-- To apply: match each `turn_order` against the turn you already received and replace its `speaker_label` and per-word `speaker` values. Use the revised labels for the final, highest-quality transcript (persisting, post-call summaries, downstream LLMs).
+- To apply: match each `turn_order` against the earlier turn you already received and replace its `speaker_label` and per-word `speaker` values. Use the revised labels for downstream LLMs, transcripts, or persisting to a database.
 
 ```json
 {
@@ -269,6 +286,38 @@ When the session ends, the server runs a final refinement pass over the whole co
     }
   ]
 }
+```
+
+**Python SDK example:**
+
+```python
+from assemblyai.streaming.v3 import RealTimeParameters, RealTimeTranscriber
+
+transcriber = RealTimeTranscriber(api_key="YOUR_API_KEY")
+
+transcriber.connect(
+    RealTimeParameters(
+        speech_model="universal-3-5-pro",
+        sample_rate=16_000,
+        speaker_labels=True,
+        speaker_labels_revision_interval_ms=120_000,
+    )
+)
+```
+
+**Node / TypeScript SDK example:**
+
+```typescript
+import { AssemblyAI } from "assemblyai";
+
+const client = new AssemblyAI({ apiKey: process.env.ASSEMBLYAI_API_KEY! });
+
+const transcriber = client.streaming.transcriber({
+  speechModel: "universal-3-5-pro",
+  sampleRate: 16_000,
+  speakerLabels: true,
+  speakerLabelsRevisionIntervalMs: 120_000,
+});
 ```
 
 ---

@@ -386,6 +386,31 @@ transcriber.disconnect(terminate=True)
 
 **The SDK does not capture microphone audio.** `assemblyai.extras` and its `MicrophoneStream` were removed in 1.0.0, along with the `[extras]` install option. Bring your own capture — `pyaudio`, `sounddevice`, a loopback device, a file — and pass 16-bit PCM chunks to `stream()`.
 
+### Streaming Diarization & Mid-Stream Revisions
+
+Enable diarization with `speaker_labels=True`. By default, refined speaker attributions arrive once at session close as a `SpeakerRevision` event. To also receive speaker revisions periodically mid-stream, set `speaker_labels_revision_interval_ms` on `RealTimeParameters` (milliseconds of audio time, e.g. `120_000` = 2 min, `300_000` = 5 min; clamped server-side to 120,000–300,000 ms, SDK ≥1.6.1):
+
+```python
+from assemblyai.streaming.v3 import RealTimeEvents, RealTimeParameters, RealTimeTranscriber
+
+transcriber = RealTimeTranscriber(api_key="YOUR_API_KEY")
+
+def on_speaker_revision(client, event):
+    for item in event.revisions:
+        print(f"Turn {item.turn_order} reattributed to speaker {item.speaker_label}")
+
+transcriber.on(RealTimeEvents.SpeakerRevision, on_speaker_revision)
+
+transcriber.connect(
+    RealTimeParameters(
+        speech_model="universal-3-5-pro",
+        sample_rate=16_000,
+        speaker_labels=True,
+        speaker_labels_revision_interval_ms=120_000,
+    )
+)
+```
+
 For the async client, use `AsyncRealTimeTranscriber` (formerly `AsyncStreamingClient`) from the same module.
 
 ---

@@ -312,6 +312,25 @@ await transcriber.connect();
 
 `close()` waits for the server's `Termination` message. Since 4.36.7 that wait is bounded: the signature is `close(waitForSessionTermination = true, terminationTimeout = 5000)`, with `terminationTimeout` in milliseconds and `0` meaning wait indefinitely. The socket closes either way.
 
+### Streaming Diarization & Speaker Revisions
+
+Enable diarization with `speakerLabels: true`. In SDK ≥4.41.5, set `speakerLabelsRevisionIntervalMs` to receive periodic mid-stream speaker revisions (interval in ms of audio time, clamped server-side to 120,000–300,000 ms, 300,000 recommended). Listen to `"speakerRevision"` events:
+
+```typescript
+const diarizationTranscriber = client.streaming.transcriber({
+  speechModel: "universal-3-5-pro",
+  sampleRate: 16_000,
+  speakerLabels: true,
+  speakerLabelsRevisionIntervalMs: 120_000,
+});
+
+diarizationTranscriber.on("speakerRevision", (revision) => {
+  for (const item of revision.revisions) {
+    console.log(`Turn ${item.turn_order} reattributed to ${item.speaker_label}`);
+  }
+});
+```
+
 ---
 
 ## 9. LLM Gateway
