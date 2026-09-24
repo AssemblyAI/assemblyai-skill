@@ -716,28 +716,41 @@ transcript = transcriber.transcribe("https://example.com/audio.mp3")
 if transcript.status == aai.TranscriptStatus.error:
     raise Exception(f"Transcription failed: {transcript.error}")
 
-# Step 2: Send to LLM Gateway
-import requests
+# Step 2: Send to LLM Gateway using the native SDK (assemblyai >= 1.6.0)
+gateway = aai.LLMGateway()
 
-llm_response = requests.post(
-    "https://llm-gateway.assemblyai.com/v1/chat/completions",
-    headers={"Authorization": aai.settings.api_key, "Content-Type": "application/json"},
-    json={
-        "model": "claude-sonnet-4-6",
-        "messages": [
-            {"role": "system", "content": "Summarize the following transcript."},
-            {"role": "user", "content": transcript.text},
-        ],
-    },
+completion = gateway.chat.completions.create(
+    model="claude-sonnet-5",
+    messages=[
+        {"role": "system", "content": "Summarize the following transcript."},
+        {"role": "user", "content": transcript.text},
+    ],
 )
 
-summary = llm_response.json()["choices"][0]["message"]["content"]
+summary = completion.choices[0].message.content
 print(summary)
+```
+
+For async pipelines, use `aai.AsyncLLMGateway`:
+
+```python
+import asyncio
+import assemblyai as aai
+
+async def main():
+    async with aai.AsyncLLMGateway(api_key="YOUR_API_KEY") as gateway:
+        completion = await gateway.chat.completions.create(
+            model="claude-sonnet-5",
+            messages=[{"role": "user", "content": "Extract action items."}],
+        )
+        print(completion.choices[0].message.content)
+
+asyncio.run(main())
 ```
 
 ### Key Points for the Transcribe-Then-Analyze Pattern
 
-- Use the same API key for both the Transcription API and the LLM Gateway.
+- Use the same API key for both the Transcription API and the LLM Gateway (`aai.settings.api_key` or `api_key=` on each client).
 - Pass `transcript.text` (the full text) in the user message. Do NOT pass transcript IDs to the LLM Gateway (that was the LeMUR pattern).
 - For speaker-labeled analysis, format utterances from `transcript.utterances` before sending to the LLM.
 - You can include other transcript features (sentiment analysis results, entity detection, etc.) in the prompt for richer analysis.
