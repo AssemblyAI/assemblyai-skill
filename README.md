@@ -26,7 +26,7 @@ LLM training data contains outdated AssemblyAI patterns — deprecated LeMUR API
 | **LLM Gateway** | Chat completions, tool calling, agentic workflows, structured output caveats, full model list |
 | **Audio intelligence** | PII redaction, diarization, summarization, sentiment, entity detection, content safety, chapters |
 | **Speech understanding** | Translation, speaker identification, custom formatting |
-| **SDKs** | Current Python (`1.5.4`) and JS/TS (`4.41.1`) patterns, the 0.x→1.x Python migration, registry-lag caveats, Ruby status, discontinued SDK warnings |
+| **SDKs** | Current Python (`1.6.0`) and JS/TS (`4.41.1`) patterns, the 0.x→1.x Python migration, registry-lag caveats, Ruby status, discontinued SDK warnings |
 | **API reference** | Full parameter list, export endpoints, webhooks, custom spelling, multichannel, code switching |
 
 ## Installation

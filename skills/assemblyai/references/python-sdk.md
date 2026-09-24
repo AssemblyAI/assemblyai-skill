@@ -3,17 +3,19 @@
 ## Installation
 
 ```bash
-pip install "assemblyai>=1.5.4"
+pip install "assemblyai>=1.6.0"
 ```
 
-**1.5.4 is the latest release (Sept 14, 2026).** Install it, or `pip install -U assemblyai` for whatever is newest if you are reading this later. The matched JS/TS version is `assemblyai@^4.41.1` (Sept 11, 2026).
+**1.6.0 is the latest release (Sept 2026).** Install it, or `pip install -U assemblyai` for whatever is newest if you are reading this later. The matched JS/TS version is `assemblyai@^4.41.1` (Sept 11, 2026).
 
-Anything below **1.5.2** has no `DictationTranscriber` — check `pip show assemblyai` before writing code against it in an existing project.
+Anything below **1.6.0** lacks the native `aai.LLMGateway` / `aai.AsyncLLMGateway` module, and anything below **1.5.2** has no `DictationTranscriber` — check `pip show assemblyai` before writing code against them in an existing project.
 
-What 1.3.0 → 1.5.4 added, newest first:
+What 1.3.0 → 1.6.0 added, newest first:
 
 | Version | Change |
 |---------|--------|
+| 1.6.0 | **LLM Gateway Module** (§9): `LLMGateway`, `AsyncLLMGateway` (`from assemblyai.llm_gateway.v1 import LLMGateway, AsyncLLMGateway`), `models.list()`, `chat.completions.create()`, `understanding.create()` / `validate()`, `settings.llm_gateway_base_url`, `settings.llm_gateway_http_timeout` |
+| 1.5.5 | Streaming `acknowledge_silence` parameter on `RealTimeSessionParameters` and `Silence` event emission (`RealTimeEvents.Silence`, `SilenceEvent` with `start_ms` and `end_ms`) |
 | 1.5.4 | Speech Understanding configurable through `TranscriptionConfig`; `universal-3-6` added to the streaming `SpeechModel` enum |
 | 1.5.2 | **Dictation API** (§12): `DictationTranscriber`, `AsyncDictationTranscriber`, `DictationConfig` (incl. `stt_prompt`), `DictationError`, `settings.dictation_base_url`; Sync STT streaming upload via `SyncTranscriber.transcribe_live()` / push-style `open_live()`; sync and dictation config caps raised to match the service |
 | 1.3.0 | `short_file_diarization_method` on `SpeakerOptions`; `localization` on `language_detection_options`; PEP 561 `py.typed` marker |
@@ -61,6 +63,7 @@ Each product lives in a versioned subpackage. New code should import from it —
 | Sync STT (≤120s) | `from assemblyai.sync.v1 import SyncTranscriber, AsyncSyncTranscriber, SyncTranscriptionConfig` |
 | Dictation (≤120s, transcript + rewrite; SDK ≥1.5.2) | `from assemblyai.dictation.v1 import DictationTranscriber, AsyncDictationTranscriber, DictationConfig, DictationError` |
 | Streaming / realtime | `from assemblyai.streaming.v3 import RealTimeTranscriber, RealTimeTranscriberOptions, RealTimeParameters` |
+| LLM Gateway (SDK ≥1.6.0) | `from assemblyai.llm_gateway.v1 import LLMGateway, AsyncLLMGateway, LLMGatewayChatCompletion, LLMGatewayCompletionChunk` |
 
 Cross-cutting names are **not** re-exported by the subpackages — import `TranscriptStatus`, `TranscriptError`, `Settings`, `Client`, `AsyncClient`, and the global `settings` from the top-level package. Mixing both styles in one file is normal and expected.
 
@@ -388,40 +391,145 @@ transcriber.disconnect(terminate=True)
 
 For the async client, use `AsyncRealTimeTranscriber` (formerly `AsyncStreamingClient`) from the same module.
 
----
+### Silence Events (universal-3-5-pro only, SDK ≥1.5.5)
 
-## 9. LLM Gateway Usage from Python
-
-The LLM Gateway provides access to LLMs via AssemblyAI's infrastructure. Use `requests` to call the gateway endpoint directly. **Do not use LeMUR — it is deprecated.**
+Opt in to `Silence` event notifications during non-speech audio intervals by setting `acknowledge_silence=True` in `RealTimeSessionParameters`. The server emits a `Silence` event roughly once per second while no speech is being transcribed, carrying `start_ms` and `end_ms` audio timestamps:
 
 ```python
-import requests
+from assemblyai.streaming.v3 import RealTimeEvents, RealTimeSessionParameters
 
-API_KEY = "YOUR_API_KEY"
+# Enable silence acknowledgments during an active session
+transcriber.set_params(RealTimeSessionParameters(acknowledge_silence=True))
 
-response = requests.post(
-    "https://llm-gateway.assemblyai.com/v1/chat/completions",
-    headers={
-        "Authorization": API_KEY,
-        "Content-Type": "application/json",
-    },
-    json={
-        "model": "claude-sonnet-4-6",
-        "messages": [
-            {
-                "role": "user",
-                "content": "Summarize the key themes from this transcript: ...",
-            }
-        ],
-        "temperature": 0.5,
-    },
-)
+def on_silence(event):
+    print(f"Silence: {event.start_ms}ms to {event.end_ms}ms")
 
-result = response.json()
-print(result["choices"][0]["message"]["content"])
+transcriber.on(RealTimeEvents.Silence, on_silence)
 ```
 
-The gateway follows the OpenAI-compatible chat completions format. The `Authorization` header uses the API key directly — no Bearer prefix.
+---
+
+## 9. LLM Gateway Usage from Python (SDK ≥1.6.0)
+
+`aai.LLMGateway` (and its async counterpart `aai.AsyncLLMGateway`, importable from `assemblyai.llm_gateway.v1`) is the official, first-class client for AssemblyAI's LLM Gateway. It targets `llm-gateway.assemblyai.com` and rides on the same `Client`/`AsyncClient` as the rest of the SDK. **Do not use LeMUR — it is deprecated.**
+
+### Chat Completions
+
+```python
+import assemblyai as aai
+
+aai.settings.api_key = "YOUR_API_KEY"
+
+gateway = aai.LLMGateway()
+
+completion = gateway.chat.completions.create(
+    model="claude-sonnet-5",
+    messages=[
+        {
+            "role": "user",
+            "content": "Summarize the key themes from this transcript: ...",
+        }
+    ],
+    temperature=0.5,
+)
+
+print(completion.choices[0].message.content)
+```
+
+Messages are plain dicts (`LLMGatewayMessageParam`). Roles can be `"user"`, `"assistant"`, `"system"`, or `"tool"`. All additional keyword arguments (e.g. `max_tokens`, `fallbacks`, `zero_data_retention`, `tools`, `tool_choice`) are forwarded directly to the Gateway endpoint.
+
+### Streaming Completions
+
+Passing `stream=True` returns an iterator of `LLMGatewayCompletionChunk`:
+
+```python
+import assemblyai as aai
+
+gateway = aai.LLMGateway(api_key="YOUR_API_KEY")
+
+stream = gateway.chat.completions.create(
+    model="claude-sonnet-5",
+    messages=[{"role": "user", "content": "Explain speech-to-text in 3 bullet points."}],
+    stream=True,
+)
+
+for chunk in stream:
+    if chunk.choices and chunk.choices[0].delta.content:
+        print(chunk.choices[0].delta.content, end="")
+```
+
+### Model Discovery
+
+Query available models dynamically via `gateway.models.list()`:
+
+```python
+import assemblyai as aai
+
+gateway = aai.LLMGateway(api_key="YOUR_API_KEY")
+
+for model in gateway.models.list().data:
+    print(model.id, model.context_length, model.pricing.global_.prompt)
+```
+
+### Speech Understanding over Transcripts
+
+Run speaker identification, translation, and custom formatting on an existing transcript without needing raw text:
+
+```python
+import assemblyai as aai
+
+gateway = aai.LLMGateway(api_key="YOUR_API_KEY")
+
+result = gateway.understanding.create(
+    transcript_id="transcript_abc123",
+    request={
+        "speaker_identification": {
+            "speaker_type": "name",
+            "speakers": [{"name": "Ana"}, {"name": "Peter"}],
+        }
+    },
+)
+print(result.speech_understanding)
+```
+
+### Async LLM Gateway (`AsyncLLMGateway`)
+
+`AsyncLLMGateway` mirrors `LLMGateway` with coroutines and connection pooling. Use an async context manager:
+
+```python
+import asyncio
+from assemblyai.llm_gateway.v1 import AsyncLLMGateway
+
+async def main():
+    async with AsyncLLMGateway(api_key="YOUR_API_KEY") as gateway:
+        completion = await gateway.chat.completions.create(
+            model="claude-sonnet-5",
+            messages=[{"role": "user", "content": "Summarize this call."}],
+        )
+        print(completion.choices[0].message.content)
+
+asyncio.run(main())
+```
+
+### Error Handling
+
+Gateway failures raise `aai.LLMGatewayError` (a subclass of `AssemblyAIError`) carrying `.status_code`, `.request_id`, and `.errors` (validation messages returned by the service):
+
+```python
+import assemblyai as aai
+
+gateway = aai.LLMGateway(api_key="YOUR_API_KEY")
+
+try:
+    completion = gateway.chat.completions.create(
+        model="non-existent-model",
+        messages=[{"role": "user", "content": "Hello"}],
+    )
+except aai.LLMGatewayError as e:
+    print(f"Gateway error {e.status_code} (req: {e.request_id}): {e.message}")
+    if e.errors:
+        print("Validation details:", e.errors)
+```
 
 ---
 
@@ -533,9 +641,9 @@ See `references/dictation.md` for the endpoint, config limits, error shapes, and
 
 ## 13. Asyncio Support
 
-Every product has an asyncio transcriber: `AsyncTranscriber` (`prerecorded.v2`), `AsyncSyncTranscriber` (`sync.v1`), `AsyncDictationTranscriber` (`dictation.v1`, ≥1.5.2), and `AsyncRealTimeTranscriber` (`streaming.v3`).
+Every product has an asyncio client: `AsyncTranscriber` (`prerecorded.v2`), `AsyncSyncTranscriber` (`sync.v1`), `AsyncDictationTranscriber` (`dictation.v1`, ≥1.5.2), `AsyncRealTimeTranscriber` (`streaming.v3`), and `AsyncLLMGateway` (`llm_gateway.v1`, ≥1.6.0).
 
-The async HTTP transcribers hold a connection pool, so use them as async context managers and the pool is always released:
+The async HTTP clients hold a connection pool, so use them as async context managers and the pool is always released:
 
 ```python
 import asyncio
@@ -555,7 +663,7 @@ async def main():
 asyncio.run(main())
 ```
 
-`aclose()` is the explicit equivalent. A client you pass in with `client=` stays yours to close; anything the transcriber builds itself — including a client derived because you also passed `api_key=` — it closes itself.
+`aclose()` is the explicit equivalent. A client you pass in with `client=` stays yours to close; anything the client builds itself — including a client derived because you also passed `api_key=` — it closes itself.
 
 ---
 
@@ -565,7 +673,7 @@ Most 0.x code runs on 1.x unchanged. No method signature was narrowed, every arg
 
 | 0.x | 1.x |
 |-----|-----|
-| `aai.Lemur(...)` and every `aai.Lemur*` name | **Removed.** No drop-in replacement in the package — transcribe, then send `transcript.text` to the LLM Gateway (§9) |
+| `aai.Lemur(...)` and every `aai.Lemur*` name | **Removed.** No drop-in replacement in the package — transcribe, then send `transcript.text` to the LLM Gateway via `aai.LLMGateway()` / `aai.AsyncLLMGateway()` (§9) |
 | `pip install "assemblyai[extras]"` | **Removed** — the install fails. Use `pip install -U assemblyai` |
 | `from assemblyai.extras import MicrophoneStream` | **Removed.** Capture PCM yourself and pass chunks to `RealTimeTranscriber.stream(...)` (§8) |
 | `StreamingClient`, `AsyncStreamingClient`, `StreamingClientOptions`, `StreamingParameters`, `StreamingSessionParameters`, `StreamingEvents`, `StreamingError`, `StreamingErrorCodes` | Renamed `RealTimeTranscriber`, `AsyncRealTimeTranscriber`, `RealTimeTranscriberOptions`, `RealTimeParameters`, `RealTimeSessionParameters`, `RealTimeEvents`, `RealTimeError`, `RealTimeErrorCodes`. **The old names still work** — each is bound to the same object — so this one is a style migration, not a breakage |

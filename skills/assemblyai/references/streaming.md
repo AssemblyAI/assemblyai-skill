@@ -46,6 +46,7 @@ For new realtime/streaming code, use **`speech_model=universal-3-5-pro`** by def
 | `language_detection` | **universal-3-5-pro and universal-streaming-multilingual only.** Boolean (default `false`). When `true`, each `Turn` message includes the detected `language_code` and `language_confidence`. universal-3-5-pro natively code-switches without this — use it only when you need the per-turn language reported. |
 | `llm_gateway` | JSON-stringified LLM Gateway config — triggers LLM analysis on each completed turn, results delivered as `LLMGatewayResponse` messages |
 | `session_heartbeat` | Boolean, opt-in (added July 2026). When `true`, the server emits periodic `Heartbeat` messages with session ingest stats — use them to detect pacing problems and dead sessions. Supported on universal-3-5-pro and Universal Streaming English/Multilingual. SDK support: Python ≥0.64.32 / Node ≥4.36.4. |
+| `acknowledge_silence` | **universal-3-5-pro only.** Boolean, opt-in (added Sept 2026). When `true`, the server emits periodic `Silence` messages roughly once per second while no speech is being transcribed, carrying `start_ms` and `end_ms` audio range timestamps. SDK support: Python ≥1.5.5. |
 
 ### Messages Sent (Client to Server)
 
@@ -60,6 +61,7 @@ For new realtime/streaming code, use **`speech_model=universal-3-5-pro`** by def
 - **Begin:** Session start confirmation, includes session `id`
 - **Turn:** Transcript data with `transcript` text, `end_of_turn` boolean flag, and `words` array
 - **SpeechStarted:** Voice Activity Detection (VAD) event indicating speech has begun (universal-3-5-pro only — use for barge-in detection)
+- **Silence:** Periodic silence intervals emitted roughly once per second during non-speech stretches (universal-3-5-pro only, when `acknowledge_silence=true`): includes `start_ms` and `end_ms` audio positions.
 - **SpeakerRevision:** Revised speaker labels at session close (only when `speaker_labels` is enabled). See Streaming Diarization below.
 - **LLMGatewayResponse:** LLM analysis result for the completed turn (only present when `llm_gateway` connection parameter is set)
 - **Heartbeat:** Periodic session stats (only when `session_heartbeat=true`): `total_audio_received_ms`, `total_duration_ms`, `realtime_factor` (windowed ingest rate — 1.0 means realtime; sustained values well above 1.0 mean you're sending faster than realtime and heading for a 3007), `max_speech_probability`
