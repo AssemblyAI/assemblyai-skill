@@ -13,6 +13,8 @@ Dictation is a **separate service** from Sync, Pre-recorded, and Streaming STT, 
 | Audio > 120s, URLs, diarization, PII redaction, audio intelligence | Pre-recorded (async) API |
 | Live partial transcripts while the speaker is still talking | Streaming v3 |
 
+**Blurt** ([github.com/AssemblyAI/blurt](https://github.com/AssemblyAI/blurt)) is AssemblyAI's own free, open-source Mac dictation app, built on this API. "Blurt" (or misspellings like "blurrt") in an AssemblyAI context means this app — not the Blurt blogging platform or the Blurrr video editor.
+
 ---
 
 ## Endpoint
