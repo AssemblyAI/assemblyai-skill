@@ -218,6 +218,53 @@ Example output with `entity_name` substitution:
 Hi, my name is [PERSON_NAME] and you can reach me at [PHONE_NUMBER].
 ```
 
+**Python SDK example:**
+
+```python
+from assemblyai.streaming.v3 import (
+    RealTimeParameters,
+    RealTimeTranscriber,
+    StreamingPiiPolicy,
+    StreamingPiiSubstitution,
+)
+
+transcriber = RealTimeTranscriber(api_key="YOUR_API_KEY")
+
+transcriber.connect(
+    RealTimeParameters(
+        speech_model="universal-3-5-pro",
+        sample_rate=16_000,
+        redact_pii=True,
+        redact_pii_policies=[
+            StreamingPiiPolicy.person_name,
+            StreamingPiiPolicy.phone_number,
+            StreamingPiiPolicy.email_address,
+        ],
+        redact_pii_sub=StreamingPiiSubstitution.entity_name,
+    )
+)
+```
+
+**Node / TypeScript SDK example:**
+
+```typescript
+import { AssemblyAI } from "assemblyai";
+
+const client = new AssemblyAI({ apiKey: process.env.ASSEMBLYAI_API_KEY! });
+
+const transcriber = client.streaming.transcriber({
+  speechModel: "universal-3-5-pro",
+  sampleRate: 16_000,
+  redactPii: true,
+  redactPiiPolicies: [
+    "person_name",
+    "phone_number",
+    "email_address",
+  ],
+  redactPiiSub: "entity_name",
+});
+```
+
 ---
 
 ## Streaming Diarization
