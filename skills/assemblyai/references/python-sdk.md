@@ -3,17 +3,20 @@
 ## Installation
 
 ```bash
-pip install "assemblyai>=1.5.4"
+pip install "assemblyai>=1.6.1"
 ```
 
-**1.5.4 is the latest release (Sept 14, 2026).** Install it, or `pip install -U assemblyai` for whatever is newest if you are reading this later. The matched JS/TS version is `assemblyai@^4.41.1` (Sept 11, 2026).
+**1.6.1 is the latest release (Sept 24, 2026).** Install it, or `pip install -U assemblyai` for whatever is newest if you are reading this later. The matched JS/TS version is `assemblyai@^4.41.5` (Sept 24, 2026).
 
 Anything below **1.5.2** has no `DictationTranscriber` — check `pip show assemblyai` before writing code against it in an existing project.
 
-What 1.3.0 → 1.5.4 added, newest first:
+What 1.3.0 → 1.6.1 added, newest first:
 
 | Version | Change |
 |---------|--------|
+| 1.6.1 | `speaker_labels_revision_interval_ms` on `RealTimeParameters` for mid-stream speaker revisions |
+| 1.6.0 | Native `aai.LLMGateway` / `AsyncLLMGateway` module (`assemblyai.llm_gateway.v1`) |
+| 1.5.5 | `acknowledge_silence` parameter on `RealTimeParameters` and streaming `Silence` event |
 | 1.5.4 | Speech Understanding configurable through `TranscriptionConfig`; `universal-3-6` added to the streaming `SpeechModel` enum |
 | 1.5.2 | **Dictation API** (§12): `DictationTranscriber`, `AsyncDictationTranscriber`, `DictationConfig` (incl. `stt_prompt`), `DictationError`, `settings.dictation_base_url`; Sync STT streaming upload via `SyncTranscriber.transcribe_live()` / push-style `open_live()`; sync and dictation config caps raised to match the service |
 | 1.3.0 | `short_file_diarization_method` on `SpeakerOptions`; `localization` on `language_detection_options`; PEP 561 `py.typed` marker |
@@ -468,7 +471,7 @@ result = transcriber.transcribe(
 print(result.text)
 ```
 
-Accepts a local file path, raw bytes, or a stream — **not a URL**. There is also `transcribe_async()` and `close()`, and `AsyncSyncTranscriber` (added in 1.0.0) for asyncio callers, with an awaitable `warm()`. The model defaults to `universal-3-5-pro` (the only sync model in the SDK). `SyncTranscriptionConfig` fields mirror the REST `config` part: `model`, `prompt`, `keyterms_prompt`, `conversation_context`, `language_codes`, `timestamps`, and `sample_rate`/`channels` for raw PCM. See `references/api-reference.md` §16 for limits and error codes.
+Accepts a local file path, raw bytes, or a stream — **not a URL**. There is also `transcribe_async()` and `close()`, and `AsyncSyncTranscriber` (added in 1.0.0) for asyncio callers, with an awaitable `warm()`. The model defaults to `universal-3-5-pro` (the only sync model in the SDK). `SyncTranscriptionConfig` fields mirror the REST `config` part: `model`, `prompt`, `keyterms_prompt`, `conversation_context`, `language_codes`, `timestamps`, and `sample_rate`/`channels` for raw PCM. `SyncTranscriptResponse` exposes `.text`, `.words` (`SyncWord`), `.confidence`, `.language_code` (ISO 639-1 code of the detected or transcribed language), `.audio_duration_ms`, `.session_id`, and `.request_time_ms`. See `references/api-reference.md` §16 for limits and error codes.
 
 ---
 
@@ -476,7 +479,7 @@ Accepts a local file path, raw bytes, or a stream — **not a URL**. There is al
 
 `DictationTranscriber` (`assemblyai.dictation.v1`, also `aai.DictationTranscriber`) wraps the **Dictation API** (`dictation.assemblyai.com`) — a separate service from Sync STT that returns the verbatim transcript **and** an LLM-cleaned, send-ready rewrite in one call. Cleanup runs by default; `llm_instruction` asks for a different shape.
 
-**Version gate:** added in **1.5.2** (Sept 11, 2026); install the current **1.5.4**. Anything older (e.g. 1.3.0) has no `DictationTranscriber` — check `pip show assemblyai` in an existing project and fall back to the raw HTTP example in `references/dictation.md` if it can't upgrade yet.
+**Version gate:** added in **1.5.2** (Sept 11, 2026); install the current **1.6.1**. Anything older (e.g. 1.3.0) has no `DictationTranscriber` — check `pip show assemblyai` in an existing project and fall back to the raw HTTP example in `references/dictation.md` if it can't upgrade yet.
 
 ```python
 import assemblyai as aai

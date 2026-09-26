@@ -1,10 +1,10 @@
 # AssemblyAI JavaScript/TypeScript SDK Reference
 
 ```bash
-npm i assemblyai@^4.41.1
+npm i assemblyai@^4.41.5
 ```
 
-**4.41.1 is the latest release (Sept 11, 2026).** Install it, or `npm i assemblyai@latest` for whatever is newest if you are reading this later. Requires Node `>=18`. The matched Python version is `assemblyai>=1.5.4` (Sept 14, 2026).
+**4.41.5 is the latest release (Sept 24, 2026).** Install it, or `npm i assemblyai@latest` for whatever is newest if you are reading this later. Requires Node `>=18`. The matched Python version is `assemblyai>=1.6.1` (Sept 24, 2026).
 
 Anything below **4.40.0** has no `client.dictation`, and below **4.38.0** no `client.llmGateway` — check `npm ls assemblyai` before writing code against them in an existing project, and fall back to raw `fetch` (see `references/dictation.md`) if the project can't upgrade yet.
 
@@ -16,6 +16,10 @@ Recent additions worth knowing about, newest first:
 
 | Version | Change |
 |---------|--------|
+| 4.41.5 | `speakerLabelsRevisionIntervalMs` on streaming transcriber for mid-stream speaker revisions |
+| 4.41.4 | Reject `connect()` promise when WebSocket errors before `SessionBegins` |
+| 4.41.3 | Export helper types (`LiteralUnion`, etc.) from package root |
+| 4.41.2 | `acknowledgeSilence` connection param and `silence` event |
 | 4.41.1 | Dictation/sync config caps raised to match the service (`stt_prompt` 6000, keyterms 100 / 8000, `llm_instruction` 2048); `universal-3-6` streaming model |
 | 4.40.0 | **`client.dictation`** for the Dictation API (§11); `client.sync.transcribeLive()` / `openLive()` streaming upload; no-speech fallback options for transcripts |
 | 4.38.0 | `client.llmGateway` (`chatCompletions()`, `listModels()`, `understanding()`), `llmGatewayBaseUrl` option, `LlmGatewayError` |
@@ -361,7 +365,7 @@ const result = await client.sync.transcribe("/path/to/local/recording.wav", {
 console.log(result.text);
 ```
 
-The first argument accepts a local file path, raw audio bytes, a Blob, or a readable stream — **not a URL**. The config (second argument) mirrors the REST `config` part: `model`, `prompt`, `keyterms_prompt`, `conversation_context`, `language_codes`, `timestamps`, and `sample_rate`/`channels` for raw PCM. Word `start`/`end` appear only when `timestamps: true`. The client-side request timeout defaults to 60s (see `SyncTranscribeOptions`). See `references/api-reference.md` §16 for limits and error codes.
+The first argument accepts a local file path, raw audio bytes, a Blob, or a readable stream — **not a URL**. The config (second argument) mirrors the REST `config` part: `model`, `prompt`, `keyterms_prompt`, `conversation_context`, `language_codes`, `timestamps`, and `sample_rate`/`channels` for raw PCM. `SyncTranscriptResponse` exposes `text`, `words`, `confidence`, `language_code` (ISO 639-1 code of the detected or transcribed language), `audio_duration_ms`, `session_id`, and `request_time_ms`. Word `start`/`end` appear only when `timestamps: true`. The client-side request timeout defaults to 60s (see `SyncTranscribeOptions`). See `references/api-reference.md` §16 for limits and error codes.
 
 ---
 
@@ -369,7 +373,7 @@ The first argument accepts a local file path, raw audio bytes, a Blob, or a read
 
 `client.dictation` is a `DictationTranscriber` wrapping the **Dictation API** (`dictation.assemblyai.com`) — a separate service from `client.sync` that returns the verbatim transcript **and** an LLM-cleaned, send-ready rewrite in one call. Cleanup runs by default; `llm_instruction` asks for a different shape.
 
-**Version gate:** added in **4.40.0** (Sept 11, 2026); install the current **4.41.1**. Anything older (e.g. 4.37.x) has no `client.dictation` — check `npm ls assemblyai` in an existing project and fall back to the raw `fetch` example in `references/dictation.md` if it can't upgrade yet.
+**Version gate:** added in **4.40.0** (Sept 11, 2026); install the current **4.41.5**. Anything older (e.g. 4.37.x) has no `client.dictation` — check `npm ls assemblyai` in an existing project and fall back to the raw `fetch` example in `references/dictation.md` if it can't upgrade yet.
 
 ```typescript
 import { AssemblyAI } from "assemblyai";
@@ -396,7 +400,7 @@ console.log(result.final_text); // llm_response ?? text (derived by the SDK)
 - `openLive(config?, options?)` is the **push-style** counterpart for callback-driven sources — returns a `DictationLiveSession`: `session.write(chunk)` (never blocks), `session.close()` ends the audio, `await session.result()` resolves the `DictationResponse`, `session.abort()` drops the request.
 - **Raw PCM** needs `sample_rate` **and** `channels` in the config (setting either marks the audio as PCM and both become required); leave both unset for WAV. Compressed formats are rejected by the service with `415`.
 - `DictationConfig` is exactly `{ sample_rate, channels, language_codes, stt_prompt, keyterms_prompt, llm_instruction }` — **no** `model`, `prompt`, `timestamps`, or `conversation_context` (those are `client.sync`). Caps are validated client-side; keyterms are trimmed and empties dropped.
-- `DictationResponse`: `text`, `words[{text, confidence}]` (no timestamps), `confidence`, `llm_response`, `llm_error`, `audio_duration_ms`, `session_id`, `request_time_ms`, `sync_time_ms`, plus the SDK-derived `final_text`. Never treat a non-null `llm_error` as a failed request.
+- `DictationResponse`: `text`, `words[{text, confidence}]` (no timestamps), `confidence`, `llm_response`, `llm_error`, `audio_duration_ms`, `session_id`, `request_time_ms`, `sync_time_ms`, `auth_time_ms`, plus the SDK-derived `final_text`. Never treat a non-null `llm_error` as a failed request.
 - Failures throw `DictationError` (`.status`, `.errorCode`, `.retryAfter`). Auth, rate-limit, size and capacity errors can surface **mid-upload**.
 
 ```typescript

@@ -429,13 +429,14 @@ Routes are versioned as of July 2026 — the unprefixed `/transcribe` still work
     { "text": "Hi",  "start": 0,   "end": 200, "confidence": 0.91 }
   ],
   "confidence": 0.87,
+  "language_code": "en",
   "audio_duration_ms": 101567,
   "session_id": "eb92c4ff-4bbb-429f-9b99-7279d7fe738f",
   "request_time_ms": 143
 }
 ```
 
-Word `start` / `end` (integer **milliseconds** — same field names as the async API) appear **only when `timestamps: true`** is set in `config`; otherwise `words[]` carries `text` + `confidence` only. Note the clip-level durations carry the `_ms` suffix. Include `session_id` in support requests.
+`language_code` is the ISO 639-1 code of the detected or transcribed language. Word `start` / `end` (integer **milliseconds** — same field names as the async API) appear **only when `timestamps: true`** is set in `config`; otherwise `words[]` carries `text` + `confidence` only. Note the clip-level durations carry the `_ms` suffix. Include `session_id` in support requests.
 
 ### Audio Requirements
 
@@ -579,7 +580,7 @@ curl -X POST https://dictation.assemblyai.com/v1/transcribe/live \
   -F 'audio=@sample.wav;type=audio/wav'
 ```
 
-**SDKs:** `DictationTranscriber` / `AsyncDictationTranscriber` in Python ≥1.5.2 (`assemblyai.dictation.v1`; `aai.settings.dictation_base_url` for residency) and `client.dictation` in Node ≥4.40.0 (`dictationBaseUrl` client option). Install the current releases (Python 1.5.4, Node 4.41.1); on an older SDK, call over HTTP. See `references/dictation.md`.
+**SDKs:** `DictationTranscriber` / `AsyncDictationTranscriber` in Python ≥1.5.2 (`assemblyai.dictation.v1`; `aai.settings.dictation_base_url` for residency) and `client.dictation` in Node ≥4.40.0 (`dictationBaseUrl` client option). Install the current releases (Python 1.6.1, Node 4.41.5); on an older SDK, call over HTTP. See `references/dictation.md`.
 
 ## 18. Voice Agents REST API (Stored Agents)
 
