@@ -27,14 +27,14 @@ Authorization: YOUR_API_KEY
 | Streaming v2 (legacy) | `wss://api.assemblyai.com/v2/realtime/ws` | — |
 | Voice Agent API | `wss://agents.assemblyai.com/v1/ws` | `wss://agents.eu.assemblyai.com/v1/ws` |
 
-**Streaming EU region**: As of March 2026, the EU region moved from AWS eu-west-1 (Ireland) to AWS eu-north-1 (Stockholm). The customer-facing endpoint host (`streaming.eu.assemblyai.com`) is unchanged.
+**Streaming data zones**: `streaming.eu.assemblyai.com` keeps audio and transcripts inside the EU, processed across AWS eu-central-1 (Frankfurt), eu-north-1 (Stockholm), eu-south-1 (Milan), eu-south-2 (Spain), eu-west-1 (Ireland), and eu-west-3 (Paris). `streaming.us.assemblyai.com` keeps them in the US (us-east-1/-2, us-west-1/-2). The default `streaming.assemblyai.com` edge-routes to the nearest region in either zone.
 
 ## SDKs
 
 | Language | Install | Status |
 |----------|---------|--------|
-| Python | `pip install "assemblyai>=1.5.4"` | Active |
-| JavaScript/TypeScript | `npm i assemblyai@^4.41.1` | Active |
+| Python | `pip install "assemblyai>=1.6.1"` | Active |
+| JavaScript/TypeScript | `npm i assemblyai@^4.41.5` | Active |
 | Ruby | `assemblyai` gem | Active |
 | Java | `assemblyai-java-sdk` | **Discontinued April 2025** |
 | Go | `assemblyai-go-sdk` | **Discontinued April 2025** |
@@ -44,7 +44,7 @@ Authorization: YOUR_API_KEY
 
 ### SDK versions
 
-**Install the latest of each: Python `1.5.4` (Sept 14, 2026) and Node `4.41.1` (Sept 11, 2026).** These are the current releases and the first pair to carry the **Dictation API** (`DictationTranscriber` / `client.dictation`, added in Python 1.5.2 and Node 4.40.0), streaming sync uploads (`transcribe_live()` / `transcribeLive()`), the Node `client.llmGateway` service (4.38.0), and the `universal-3-6` streaming model. The two SDKs version independently (the JS/TS SDK has been on 4.x since December 2023), so there is no shared version number to match on; match on the release carrying the same change instead.
+**Install the latest of each: Python `1.6.1` and Node `4.41.5` (both Sept 24, 2026).** These are the current releases. They carry the **Dictation API** (`DictationTranscriber` / `client.dictation`, added in Python 1.5.2 and Node 4.40.0), streaming sync uploads (`transcribe_live()` / `transcribeLive()`), the Node `client.llmGateway` service (4.38.0), `universal-3-6-pro` in the streaming model enum (Python 1.1.0 / Node 4.37.1), and mid-session speaker revisions via `speaker_labels_revision_interval_ms` (Python 1.6.1 / Node 4.41.5). The two SDKs version independently (the JS/TS SDK has been on 4.x since December 2023), so there is no shared version number to match on; match on the release carrying the same change instead.
 
 Always check the installed version (`pip show assemblyai` / `npm ls assemblyai`) before writing code against `DictationTranscriber` or `client.dictation` in an existing project — anything older than the versions above has no dictation surface.
 
@@ -63,11 +63,13 @@ Nothing else breaks: `aai.settings.api_key`, `aai.Transcriber()`, and the flat i
 
 **Node 4.37.0 breaking change:** `client.lemur`, `LemurService`, and all Lemur request/response types are removed (the LeMUR endpoints answer 404). No renames, no signature changes — the rest of a 4.36.x codebase is unaffected.
 
-**`universal-3-6-pro`** appears in the streaming model enums added by Python 1.1.0 (`assemblyai.streaming.v3.SpeechModel`) and Node 4.37.1 (`StreamingSpeechModel`). It is **not yet in the public docs or the model picker** — keep using `universal-3-5-pro` until it is announced.
+**`universal-3-6-pro`** (Universal-3.6 Pro Streaming, launched Sept 29, 2026) is accepted by the streaming model enums from Python 1.1.0 (`assemblyai.streaming.v3.SpeechModel`) and Node 4.37.1 (`StreamingSpeechModel`); Python 1.0.0 rejects it client-side with a `ValidationError`. Both enums also list a value named `universal-3-6` (no `-pro`) — it is **not** a documented streaming model; don't use it in place of `universal-3-6-pro`.
 
 ## Speech-to-Text Models
 
-**`universal-3-5-pro` is the model to use across the board.** It is GA for **both** realtime/streaming and pre-recorded/async transcription. Use it everywhere by default; drop to `universal-2` only for cost or for languages outside Universal-3.5 Pro's 18. `universal-3-pro` (async) and `u3-rt-pro` (streaming) have both been **superseded by `universal-3-5-pro`** and removed from their model lists/enums.
+**Streaming: use `universal-3-6-pro`.** Universal-3.6 Pro Streaming (launched Sept 29, 2026) is the streaming flagship and the server default: 32 languages, a drop-in replacement for `universal-3-5-pro` with the same parameters and features.
+
+**Pre-recorded/async and Sync STT: use `universal-3-5-pro`.** Universal-3.6 Pro is **streaming-only**. There is no `universal-3-6-pro` for `POST /v2/transcript` `speech_models` or for the Sync STT `X-AAI-Model` header, so don't put it there. Dictation has no model selector (it runs on Universal-3.5 Pro), so there's nothing to set. Drop to `universal-2` only for cost or for languages outside Universal-3.5 Pro's 18 (async). `universal-3-pro` (async) and `u3-rt-pro` (streaming) are both **superseded** and removed from their model lists/enums.
 
 **Default-model transition (async):** accounts created on/after **July 7, 2026** already default to `["universal-3-5-pro", "universal-2"]` when `speech_models` is omitted (and cannot request `universal-3-pro`/`universal`). All remaining accounts switch on **September 2, 2026** — from that date, an omitted/empty/singular `speech_model`, or `["universal"]`, routes to `universal-3-5-pro`; `speech_models: ["universal-3-pro"]` returns an **error**; and streaming `u3-rt-pro` connections are silently redirected to `universal-3-5-pro`. Pin `speech_models` explicitly if you need deterministic behavior across the transition.
 
@@ -84,24 +86,27 @@ On `POST /v2/transcript`, `speech_models` is a priority list with fallback — t
 
 | Model | Languages | Best For |
 |-------|-----------|----------|
-| **universal-3-5-pro** | 18 | **Recommended default for new realtime/streaming code** — next-gen flagship: more languages, native code-switching, improved prompting + conversational context |
+| **universal-3-6-pro** | 32 | **Recommended default for new realtime/streaming code**, and the server default when `speech_model` is omitted. Flagship: native code-switching, prompting, conversational context, voice focus, streaming diarization. Launched Sept 29, 2026 |
+| **universal-3-5-pro** | 19 | Previous flagship, **still fully supported** with the same features as 3.6 Pro (fewer languages). Keep it only for integrations deliberately pinned to it |
 | **universal-streaming-english** | 1 (English) | Voice agents, ~300ms latency |
 | **universal-streaming-multilingual** | 6 | Per-utterance language detection |
-| **u3-rt-pro** | 6 | **Legacy** — Universal-3 Pro Streaming, **removed July 2026** from the model picker and streaming spec `speech_model` enum. Superseded by `universal-3-5-pro`. Still seen in older code |
+| **u3-rt-pro** | 6 | **Legacy** — Universal-3 Pro Streaming, **removed July 2026** from the model picker and streaming spec `speech_model` enum. Superseded by the Universal-3.5/3.6 Pro models. Still seen in older code |
 | **whisper-rt** | 99+ | **Legacy** — removed from the public model picker (June 2026) and the streaming spec enums, but still functional via `speech_model: whisper-rt` for broadest streaming language coverage, auto-detect only |
 
-For realtime/streaming STT, use `speech_model: "universal-3-5-pro"` by default. The raw API parameter is optional and defaults to `universal-3-5-pro`; set it explicitly when pinning behavior or using an SDK that requires the field. The streaming spec `speech_model` enum now lists only `universal-3-5-pro`, `universal-streaming-english`, and `universal-streaming-multilingual`. The `mode` connection param (universal-3-5-pro only) trades off accuracy vs latency: `min_latency`, `balanced` (default), `max_accuracy`.
+For realtime/streaming STT, use `speech_model: "universal-3-6-pro"` by default. The raw API parameter is optional and defaults to `universal-3-6-pro`, but **set it explicitly**: the LiveKit and Pipecat plugins still default to `universal-3-5-pro`, and a misspelled or unknown query param is silently ignored rather than rejected. Confirm the model you actually got from `Begin.configuration.model`. The streaming spec `speech_model` enum lists `universal-3-6-pro`, `universal-3-5-pro`, `universal-streaming-english`, and `universal-streaming-multilingual`. The `mode` connection param (Universal-3.6/3.5 Pro) trades accuracy against latency: `min_latency`, `balanced` (default), `max_accuracy`.
+
+**Pricing (streaming, per session hour):** Universal-3.6 Pro $0.45/hr with keyterms **included**. Add-ons: prompting $0.05/hr, speaker diarization $0.12/hr, Medical Mode $0.15/hr, Voice Focus $0.10/hr, PII redaction $0.12/hr. On Universal-Streaming, keyterms cost $0.04/hr and prompting/Voice Focus aren't supported.
 
 ### Medical Mode (Add-On)
 
 `domain: "medical-v1"` enables Medical Mode — an add-on that improves accuracy for medical terminology (medications, procedures, conditions, dosages). Works with both pre-recorded and streaming models.
 
 - **Pre-recorded:** Universal-3.5 Pro (`domain: "medical-v1"` in request body), Universal-2
-- **Streaming:** universal-3-5-pro, universal-streaming-english, universal-streaming-multilingual
+- **Streaming:** universal-3-6-pro, universal-3-5-pro, universal-streaming-english, universal-streaming-multilingual
 - **Supported languages:** English, Spanish, German, French (4 languages only)
 - Billed as a separate add-on. If used with an unsupported language, the API ignores `domain` and returns a warning — transcript still completes and you are NOT charged for Medical Mode.
 
-### Prompting (Universal-3.5 Pro)
+### Prompting (Universal-3.6 Pro streaming / Universal-3.5 Pro)
 
 `prompt` and `keyterms_prompt` are **complementary** — use either, or both together. Neither changes the output format, and both work the same way for **streaming and async** (`POST /v2/transcript`). Transcription behavior (verbatim, punctuation, formatting) is built in and managed by AssemblyAI.
 
@@ -157,7 +162,7 @@ A **separate service** (own hostname, own request shape — not Sync, not Pre-re
 - **Upload while recording:** the body streams, so open the request when the user starts speaking and push PCM frames as captured (config first; don't go silent mid-body; a chunked body can't be replayed — keep audio in memory to retry)
 - **Pre-warming:** `GET https://dictation.assemblyai.com/warm` (unauthenticated, `200 {"warm":"toasty"}`; `/v1/warm` also works) — same client and same host as the transcription, shortly before it
 - **Errors:** two shapes — `{status, title, detail}` for most, `{error, error_code}` only for request-parsing failures; read `detail` then fall back to `error`. 429/502/503/504 transient; 400/413/415 fix the request; 401 fix the key. Client timeout 90s
-- **SDKs:** `DictationTranscriber` (Python **≥1.5.2**, `assemblyai.dictation.v1`; install the current 1.5.4) and `client.dictation` (Node **≥4.40.0**; install the current 4.41.1), both from Sept 11, 2026. Check the installed version before using the SDK path in an existing project; on an older SDK, call the endpoint over HTTP. See `references/dictation.md`
+- **SDKs:** `DictationTranscriber` (Python **≥1.5.2**, `assemblyai.dictation.v1`; install the current 1.6.1) and `client.dictation` (Node **≥4.40.0**; install the current 4.41.5), both from Sept 11, 2026. Check the installed version before using the SDK path in an existing project; on an older SDK, call the endpoint over HTTP. See `references/dictation.md`
 
 ```bash
 curl -X POST https://dictation.assemblyai.com/v1/transcribe/live \
@@ -184,7 +189,7 @@ See `references/llm-gateway.md` for models, tool calling, structured outputs, an
 |--------|---------|
 | `prompt` + `keyterms_prompt` | **Complementary** for Universal-3.5 Pro — use either or both together. `prompt` is a contextual *description* of the audio; `keyterms_prompt` is an explicit term list. Neither changes output formatting |
 | `prompt` is context, not instructions | Universal-3.5 Pro's `prompt` *describes* the audio (domain/scenario/details). Formatting or behavioral commands (punctuation rules, "transcribe verbatim", negative directives like "don't…") are **not supported** and are ignored — transcription behavior is managed internally |
-| `summarization` / `auto_chapters` (top-level params) | **Deprecated.** Use **Speech Understanding** `summarization` (chaptered summary w/ timestamps + headlines) or `action_items` — `speech_understanding.request.<feature>` on `POST /v2/transcript` — or the LLM Gateway for fully custom prompts. Both SDKs accept `speech_understanding` in their transcription config (Python ≥0.64.x), so this does NOT require dropping to raw REST |
+| `summarization` / `auto_chapters` (top-level params) | **Deprecated.** Use **Speech Understanding** `summarization` (chaptered summary w/ timestamps + headlines) or `action_items` — `speech_understanding.request.<feature>` on `POST /v2/transcript` — or the LLM Gateway for fully custom prompts. **SDK caveat (Python 1.6.1 / Node 4.41.5):** both SDKs type `speech_understanding.request` with only `speaker_identification`/`translation`/`custom_formatting`. Python **silently drops** `summarization`/`action_items` (the API then 400s with `speech_understanding.request is empty`), so send those over raw REST. Node passes them through at runtime, but TypeScript needs an `as any` cast. `summary_type` (`bullets`/`paragraph`) is required |
 | PII redaction scope | Only redacts words in `text` — other feature outputs (entities, summaries) may still expose sensitive data |
 | PII location policies | `redact_pii_policies` now supports granular location types (July 2026): `location_address`, `location_address_street`, `location_city`, `location_state`, `location_country`, `location_zip`, `location_coordinate`. A full contiguous address is one `location_address` span; standalone fragments get their subtype |
 | PII audio redaction method | `override_audio_redaction_method: "silence"` replaces PII with silence instead of default beep |
@@ -200,16 +205,19 @@ See `references/llm-gateway.md` for models, tool calling, structured outputs, an
 
 | Gotcha | Details |
 |--------|---------|
-| universal-3-5-pro turn detection | `universal-3-5-pro` uses punctuation (`.` `?` `!`), NOT confidence thresholds — `end_of_turn_confidence_threshold` has no effect (it applies only to Universal Streaming English/Multilingual) |
-| `speaker_labels` overrides `mode` | Enabling `speaker_labels: true` on universal-3-5-pro replaces the `mode` preset with a dedicated diarization turn-detection profile — `min_latency`/`balanced`/`max_accuracy` have **no effect** and **no warning is returned**. The profile caps turns at **10s** (force-finalized; a turn boundary is not a speaker change), slows partials to ~3s cadence (`continuous_partials: true` restores ~1s), and sets silence defaults to 640/768ms. Explicitly-set `min_turn_silence`/`max_turn_silence`/`vad_threshold`/`interruption_delay` still apply on top |
+| Universal-3.6/3.5 Pro turn detection | `universal-3-6-pro` and `universal-3-5-pro` end turns by checking the transcript so far (terminal punctuation) after `min_turn_silence`, NOT by confidence thresholds. `end_of_turn_confidence_threshold` and `format_turns` have no effect (they apply only to Universal Streaming English/Multilingual); finals are always formatted. Defaults come from `mode`: `min_latency` 128/640ms, `balanced` 128/1280ms, `max_accuracy` 512/2560ms (min/max turn silence). `max_accuracy` holds turns open longer, so pauses inside entities (phone numbers, addresses, card numbers) don't split the turn: best for scribes and post-call accuracy, at the cost of latency |
+| `speaker_labels` overrides `mode` | Enabling `speaker_labels: true` on Universal-3.6/3.5 Pro replaces the `mode` preset with a dedicated diarization turn-detection profile — `min_latency`/`balanced`/`max_accuracy` have **no effect** and **no warning is returned**. The profile caps turns at **10s** (force-finalized; a turn boundary is not a speaker change), slows partials to ~3s cadence (`continuous_partials: true` restores ~1s), and sets silence defaults to 640/768ms. Explicitly-set `min_turn_silence`/`max_turn_silence`/`vad_threshold`/`interruption_delay` still apply on top |
 | `format_turns` digit rendering | `format_turns=true` enables punctuation, casing, and inverse text normalization (dates, times, phone numbers) — it does **NOT** control digit rendering. Numerals like "22" are a model behavior, and lexical number output ("twenty-two") is not supported in streaming |
-| Language selection | The connection param is **`language_codes`** (plural, a **list**, max **10** codes per session, e.g. `["en","es"]`). Accepted codes now include `ru` and `ko` (added July 2026). Updatable **mid-stream** via `UpdateConfiguration` (applies from the next turn; `[]` clears steering back to native code-switching). The singular `language_code` connect param is **deprecated but still accepted** (read as a one-element list). Steering biases — it doesn't lock; the model still code-switches among the listed languages. `universal-3-5-pro` only |
-| Context carryover | On by default — the model carries prior finalized turns forward as context (per-session, up to `previous_context_n_turns` entries, server default `5`, range 0–100). Pass your agent's spoken reply via `agent_context` (connection-time query param to seed an opening greeting, or mid-stream via `UpdateConfiguration`; ≤1750 chars per value) so the model knows the question the user is answering. `universal-3-5-pro` only |
-| Diarization revised labels | With `speaker_labels` enabled, a single `SpeakerRevision` message is emitted right before `Termination` (after you send `Terminate`), containing a `revisions` array of only the turns whose speaker labels changed (matched by `turn_order`). Text and word timestamps never change — only speaker assignments. Adds ~400ms latency at session close. Use it for the final, highest-quality attribution |
+| Language selection | The connection param is **`language_codes`** (plural, a **list**, max **10** codes per session, e.g. `["en","es"]`). Universal-3.6 Pro accepts **32** codes: `af ar yue ca da nl en et fi fr gl de he hi it ja ko zh mr no nn fa pt ro ru es sv tr ur vi xh zu` (`yue` = Cantonese, `zh` = Mandarin, `nn` = Norwegian Nynorsk). Universal-3.5 Pro is documented for 19 of them (no `af yue et gl ko mr nn fa ro ru ur xh zu`). Neither SDK validates the codes client-side. Updatable **mid-stream** via `UpdateConfiguration` (applies from the next turn; `[]` clears steering back to native code-switching). The singular `language_code` connect param is **deprecated but still accepted** (read as a one-element list). Steering biases — it doesn't lock; the model still code-switches among the listed languages. Universal-3.6/3.5 Pro only |
+| Context carryover | On by default — the model carries prior finalized turns forward as context (per-session, up to `previous_context_n_turns` entries, server default `5`, range 0–100). Pass your agent's spoken reply via `agent_context` (connection-time query param to seed an opening greeting, or mid-stream via `UpdateConfiguration`; ≤1750 chars per value) so the model knows the question the user is answering. `previous_context_n_turns` is connect-time only and **not exposed by the Python or Node SDKs** (Python silently drops it); use the raw WebSocket or LiveKit/Pipecat to set it. Universal-3.6/3.5 Pro only |
+| Diarization revised labels | With `speaker_labels` enabled, a final `SpeakerRevision` message is emitted right before `Termination` (after you send `Terminate`) **if any label changed** (zero or one at session end), containing a `revisions` array of only the turns whose speaker labels changed (matched by `turn_order`). Set `speaker_labels_revision_interval_ms` (recommended `300000`; minimum 120000ms of audio, and per the Node SDK changelog values above 300000 are clamped to it; first one after ~2 min) to also get revisions **mid-session** (Python SDK ≥1.6.1 / Node ≥4.41.5). Each message is a delta; apply in arrival order, last one wins per `turn_order`. Text and word timestamps never change — only speaker assignments. The final pass adds ~400ms at session close |
 | Compressed audio input | `encoding` accepts `opus` (raw packets — one per binary WS message), `ogg_opus` (Ogg stream — arbitrary chunks; ffmpeg/gstreamer/MediaRecorder output), and `aac` (ADTS AAC, added July 2026), in addition to `pcm_s16le`/`pcm_mulaw`. For these compressed encodings `sample_rate` is optional/ignored (the stream is self-describing) — but still required for PCM (recent SDKs throw at construction if missing) |
-| Session heartbeat | Opt-in connection param `session_heartbeat=true` (July 2026) makes the server emit periodic `Heartbeat` messages with `total_audio_received_ms`, `total_duration_ms`, `realtime_factor` (1.0 = realtime ingest), and `max_speech_probability` — use it to detect pacing problems and dead sessions. Python SDK ≥0.64.32 / Node ≥4.36.4 |
+| Session heartbeat | Opt-in connection param `session_heartbeat=true` (July 2026; also toggleable mid-stream via `UpdateConfiguration`) makes the server emit a `Heartbeat` every 5s of wall-clock time with `total_audio_received_ms`, `total_duration_ms`, `realtime_factor` (1.0 = realtime ingest), and `max_speech_probability` — use it to detect pacing problems and dead sessions. Python SDK ≥0.64.32 / Node ≥4.36.4 |
+| Check `Begin.configuration` | The `Begin` message echoes what the server applied: `configuration.{model, mode, api_version, speaker_labels, redact_pii, filter_profanity, domain, voice_focus}`. **Unknown or misspelled query params are ignored, not rejected**, so assert `configuration.model` equals the `speech_model` you asked for. The optional `AssemblyAI-Version` header pins the API version (default latest, echoed as `api_version`) |
+| Mid-stream updates from the SDKs | Python: `transcriber.set_params(RealTimeSessionParameters(min_turn_silence=1000, keyterms_prompt=[...]))`. There is **no `update_configuration()` method**, and `RealTimeSessionParameters` has no `mode` field. Node: `transcriber.updateConfiguration({ min_turn_silence: 1000 })` takes **snake_case** keys, and its type has no `mode`, although the object is forwarded as-is, so `{ mode: "balanced" } as any` works at runtime. Docs snippets showing `client.update_configuration(mode=...)` or `updateConfiguration({ minTurnSilence })` don't match the SDKs. From Python, switching `mode` mid-stream needs the raw `UpdateConfiguration` JSON |
+| New `Turn` fields | `utterance` (the finalized text on `end_of_turn` messages, `""` on partials) and, with `speaker_labels`, experimental `speaker_confidence` on the turn and each final word (uncalibrated, so use it for relative comparison only; omitted when unavailable; never on `SpeakerRevision`). Neither SDK types these: Python's `TurnEvent` drops them, and Node passes them through untyped. Read the raw JSON if you need them |
 | Close codes without an Error frame | `1000`/`1006` close the socket **without** an `Error` message, so `on_error` never fires — handle cleanup in `on_close`. `1009` means a single WebSocket message exceeded the server's **128 KB** read limit |
-| EU region | Moved from Ireland (eu-west-1) to Stockholm (eu-north-1) in March 2026. Endpoint host (`streaming.eu.assemblyai.com`) is unchanged |
+| Data residency | The default `streaming.assemblyai.com` edge-routes to the nearest US **or** EU region. For residency guarantees, connect to `streaming.us.assemblyai.com` or `streaming.eu.assemblyai.com` explicitly (the EU zone now spans six AWS EU regions, not just Stockholm) |
 
 ### Voice Agent API
 
@@ -263,11 +271,14 @@ See `references/llm-gateway.md` for models, tool calling, structured outputs, an
 | Treating Dictation `llm_error` as a failed request | The rewrite is best-effort — a `200` with `llm_response: null` and `llm_error: "timeout"`/`"error"` still carries the verbatim `text`. Fall back to `text` (SDK: `final_text`) |
 | Dictation `language_codes: "es"` (string) or `language_code` | It's always a **list**: `language_codes: ["es"]` |
 | Passing `model`, `timestamps`, `conversation_context`, `speaker_labels`, or `redact_pii` in Dictation `config` | Unknown fields → `400`. Dictation's config is exactly `sample_rate`, `channels`, `language_codes`, `stt_prompt`, `keyterms_prompt`, `llm_instruction` |
-| `aai.DictationTranscriber` / `client.dictation` on an older SDK | Only in Python ≥1.5.2 / Node ≥4.40.0 (Sept 11, 2026) — install the current 1.5.4 / 4.41.1. Verify the installed version; otherwise use raw HTTP |
+| `aai.DictationTranscriber` / `client.dictation` on an older SDK | Only in Python ≥1.5.2 / Node ≥4.40.0 (Sept 11, 2026) — install the current 1.6.1 / 4.41.5. Verify the installed version; otherwise use raw HTTP |
 | Hardcoding v2 streaming URL | v3 (`/v3/ws`) is current; v2 still works but is legacy |
-| Using `speech_model=u3-rt-pro` for streaming | **Removed July 2026** from the model picker and streaming spec enum — superseded by `universal-3-5-pro` (the streaming default). From **September 2, 2026** `u3-rt-pro` connections are silently redirected to `universal-3-5-pro`. Set a different model only for cost tradeoffs (`universal-streaming-english`/`-multilingual`) |
-| Python SDK rejects `universal-3-5-pro` | The SDK validates `speech_model` locally against an enum, and pre-`0.64.21` releases omit `universal-3-5-pro`. Install the current release — `pip install "assemblyai>=1.5.4"` (or `pip install -U assemblyai`) |
-| `aai.SpeechModel.universal_3_5_pro` in Python SDK | Use raw strings: `"universal-3-5-pro"`, `"universal-2"` — these enum aliases don't exist in the SDK |
+| Using `speech_model=u3-rt-pro` for streaming | **Removed July 2026** from the model picker and streaming spec enum — use `universal-3-6-pro` (the streaming default since Sept 29, 2026). From **September 2, 2026** `u3-rt-pro` connections are silently redirected to `universal-3-5-pro`. Set a different model only for cost tradeoffs (`universal-streaming-english`/`-multilingual`) |
+| Using `universal-3-5-pro` for new streaming code | Use **`universal-3-6-pro`**: same parameters, 32 languages instead of 19. 3.5 Pro is still fully supported, so keep it only when a project is deliberately pinned to it |
+| `universal-3-6-pro` on pre-recorded or Sync STT | 3.6 Pro is **streaming-only**. Use `universal-3-5-pro` in async `speech_models` and the Sync `X-AAI-Model` header. Dictation takes no model at all |
+| `speech_model="universal-3-6"` | Not a documented model, even though both SDK enums list it. Use `universal-3-6-pro` |
+| Python SDK rejects `universal-3-6-pro` / `universal-3-5-pro` | The SDK validates streaming `speech_model` locally against an enum: releases before `1.1.0` omit `universal-3-6-pro` (1.0.0 raises `ValidationError`), and pre-`0.64.21` releases omit `universal-3-5-pro`. Install the current release — `pip install "assemblyai>=1.6.1"` (or `pip install -U assemblyai`). Node doesn't check at runtime, but TypeScript rejects `"universal-3-6-pro"` before 4.37.1 |
+| `aai.SpeechModel.universal_3_5_pro` in Python SDK | The top-level (async) `aai.SpeechModel` has no such member — use raw strings in `speech_models`: `"universal-3-5-pro"`, `"universal-2"`. The streaming enum is a different class (`assemblyai.streaming.v3.SpeechModel`, which does have `universal_3_6_pro`); a raw `"universal-3-6-pro"` string works there too |
 | `aai.Lemur(...)` / `client.lemur` in the SDKs | **Removed** — Python 1.0.0 and Node 4.37.0 deleted the LeMUR surface entirely (the endpoints answer 404). Transcribe, then send `transcript.text` to the LLM Gateway |
 | `pip install "assemblyai[extras]"` | **Removed in Python 1.0.0** — the `[extras]` option fails outright. Use `pip install -U assemblyai` |
 | `from assemblyai.extras import MicrophoneStream` | **Removed in Python 1.0.0.** The SDK does not capture microphone audio; use `pyaudio`/`sounddevice` and pass 16-bit PCM chunks to `RealTimeTranscriber.stream(...)` |
@@ -291,7 +302,7 @@ Read the relevant reference file based on what the user needs:
 |------|-------------|
 | `references/python-sdk.md` | Python SDK patterns and examples |
 | `references/js-sdk.md` | JavaScript/TypeScript SDK patterns |
-| `references/streaming.md` | Real-time/streaming STT, v3 protocol, temp tokens, error codes |
+| `references/streaming.md` | Real-time/streaming STT: Universal-3.6 Pro (32 languages, `mode` presets, turn detection), v3 protocol and messages, `UpdateConfiguration`, diarization and `SpeakerRevision`, context carryover, voice focus, temp tokens, error codes |
 | `references/dictation.md` | Dictation API: transcript + LLM rewrite in one call, `llm_instruction`, `stt_prompt`/`keyterms_prompt`, chunked upload while recording, pre-warming, error shapes, Python/Node SDK surface |
 | `references/voice-agents.md` | Voice agent integrations: LiveKit, Pipecat, turn detection, latency optimization |
 | `references/llm-gateway.md` | Applying LLMs to transcripts, tool calling, available models |

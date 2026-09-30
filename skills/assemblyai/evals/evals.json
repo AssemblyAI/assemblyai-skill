@@ -18,11 +18,12 @@
       "id": 2,
       "eval_name": "livekit-dental-voice-agent",
       "prompt": "I'm building a voice agent for a dental office using LiveKit and AssemblyAI. Patients will be calling to schedule appointments and I need it to accurately capture names, procedure types, and dates. Can you set up the STT pipeline?",
-      "expected_output": "A LiveKit STT setup using universal-3-5-pro with correctly tuned endpointing/VAD parameters and domain keyterms, avoiding deprecated parameters and removed models.",
+      "expected_output": "A LiveKit STT setup using universal-3-6-pro with correctly tuned endpointing/VAD parameters and domain keyterms, avoiding deprecated parameters and removed models.",
       "files": [],
       "assertions": [
-        {"text": "Uses universal-3-5-pro (not u3-rt-pro, which was removed July 2026, or older streaming models)", "type": "semantic"},
-        {"text": "Sets max_turn_silence explicitly (not relying on LiveKit plugin default of 100ms)", "type": "semantic"},
+        {"text": "Passes model=\"universal-3-6-pro\" explicitly (the plugin still defaults to universal-3-5-pro; not u3-rt-pro, which was removed July 2026, or older streaming models)", "type": "semantic"},
+        {"text": "Sets mode or max_turn_silence explicitly (not relying on the LiveKit plugin's 100ms default turn-silence windows)", "type": "semantic"},
+        {"text": "If it pins livekit-agents, pins 1.8.0 or newer (the first release that accepts universal-3-6-pro)", "type": "semantic"},
         {"text": "Sets endpointing min_delay to 0 (via TurnHandlingOptions) to avoid the additive 500ms delay", "type": "semantic"},
         {"text": "Synchronizes VAD thresholds (both ~0.3)", "type": "semantic"},
         {"text": "Includes keyterms_prompt with dental vocabulary", "type": "semantic"},
@@ -70,8 +71,8 @@
         {"text": "Does NOT import assemblyai.extras or MicrophoneStream — both were removed in Python SDK 1.0.0", "type": "semantic"},
         {"text": "Does NOT install assemblyai[extras] — the extra was removed in Python SDK 1.0.0", "type": "semantic"},
         {"text": "Captures microphone PCM itself (pyaudio, sounddevice, or equivalent) and passes 16-bit PCM chunks to the transcriber's stream() method", "type": "semantic"},
-        {"text": "Sets speech_model to universal-3-5-pro and passes sample_rate explicitly (required for PCM)", "type": "semantic"},
-        {"text": "If it pins a version, pins the current assemblyai>=1.5.4 (or at minimum >=1.0.0) rather than a 0.64.x release", "type": "semantic"}
+        {"text": "Sets speech_model to universal-3-6-pro and passes sample_rate explicitly (required for PCM)", "type": "semantic"},
+        {"text": "If it pins a version, pins the current assemblyai>=1.6.1 (or at minimum >=1.1.0, the first release whose enum accepts universal-3-6-pro) rather than a 0.64.x or 1.0.0 release", "type": "semantic"}
       ]
     },
     {
@@ -89,7 +90,23 @@
         {"text": "Stores/keeps `text` as the verbatim transcript and uses `llm_response` (or final_text) for display, falling back to `text` when llm_response is null / llm_error is set — does not treat a rewrite failure as a request failure", "type": "semantic"},
         {"text": "Sends WAV or raw 16-bit PCM audio (with sample_rate and channels in config for PCM) and does not send MP3/M4A/WebM", "type": "semantic"},
         {"text": "Does not pass unsupported fields (model, timestamps, conversation_context, speaker_labels, redact_pii) in the dictation config", "type": "semantic"},
-        {"text": "If it uses the SDK, pins assemblyai>=1.5.4 (DictationTranscriber landed in 1.5.2) or otherwise falls back to raw HTTP", "type": "semantic"}
+        {"text": "If it uses the SDK, pins assemblyai>=1.6.1 (DictationTranscriber landed in 1.5.2) or otherwise falls back to raw HTTP", "type": "semantic"}
+      ]
+    },
+    {
+      "id": 7,
+      "eval_name": "node-streaming-cantonese-korean",
+      "prompt": "Our support line takes live calls in Cantonese and Korean (callers sometimes drop into English). In Node/TypeScript, stream the call audio (16 kHz PCM) to AssemblyAI in real time, print finals with the detected language, and let me bump the silence threshold when the agent asks for an account number.",
+      "expected_output": "A Node/TypeScript streaming v3 implementation using client.streaming.transcriber with speechModel universal-3-6-pro (the only streaming model covering Cantonese and Korean), languageCodes steering toward yue/ko/en, languageDetection enabled to get language_code on finals, and a mid-stream updateConfiguration call with snake_case keys to raise min_turn_silence.",
+      "files": [],
+      "assertions": [
+        {"text": "Uses speechModel \"universal-3-6-pro\" (not universal-3-5-pro, which lacks Cantonese and Korean, and not universal-streaming-multilingual, u3-rt-pro, or the undocumented \"universal-3-6\")", "type": "semantic"},
+        {"text": "Steers languages with languageCodes / language_codes as a list including yue (Cantonese, not zh or zh-HK) and ko, optionally en", "type": "semantic"},
+        {"text": "Enables languageDetection / language_detection to get language_code on Turn messages (code-switching alone doesn't report the language)", "type": "semantic"},
+        {"text": "Updates the silence threshold mid-stream via updateConfiguration with snake_case keys (e.g. { min_turn_silence: 1000 }) or a raw UpdateConfiguration message, not by reconnecting and not with camelCase minTurnSilence", "type": "semantic"},
+        {"text": "Passes sampleRate 16000 for PCM", "type": "semantic"},
+        {"text": "Does not pass format_turns or end_of_turn_confidence_threshold as if they affected Universal-3.6 Pro", "type": "semantic"},
+        {"text": "If it pins the SDK, pins assemblyai 4.37.1 or newer (ideally the current ^4.41.5)", "type": "semantic"}
       ]
     }
   ]
