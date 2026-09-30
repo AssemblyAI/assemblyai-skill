@@ -1,10 +1,10 @@
 # AssemblyAI JavaScript/TypeScript SDK Reference
 
 ```bash
-npm i assemblyai@^4.41.1
+npm i assemblyai@^4.41.5
 ```
 
-**4.41.1 is the latest release (Sept 11, 2026).** Install it, or `npm i assemblyai@latest` for whatever is newest if you are reading this later. Requires Node `>=18`. The matched Python version is `assemblyai>=1.5.4` (Sept 14, 2026).
+**4.41.5 is the latest release (Sept 24, 2026).** Install it, or `npm i assemblyai@latest` for whatever is newest if you are reading this later. Requires Node `>=18`. The matched Python version is `assemblyai>=1.6.1` (Sept 24, 2026).
 
 Anything below **4.40.0** has no `client.dictation`, and below **4.38.0** no `client.llmGateway` — check `npm ls assemblyai` before writing code against them in an existing project, and fall back to raw `fetch` (see `references/dictation.md`) if the project can't upgrade yet.
 
@@ -16,10 +16,11 @@ Recent additions worth knowing about, newest first:
 
 | Version | Change |
 |---------|--------|
-| 4.41.1 | Dictation/sync config caps raised to match the service (`stt_prompt` 6000, keyterms 100 / 8000, `llm_instruction` 2048); `universal-3-6` streaming model |
+| 4.41.5 | `speakerLabelsRevisionIntervalMs` streaming param (mid-session `speakerRevision` events; server clamps non-zero values to 120000–300000ms of audio) |
+| 4.41.1 | Dictation/sync config caps raised to match the service (`stt_prompt` 6000, keyterms 100 / 8000, `llm_instruction` 2048) |
 | 4.40.0 | **`client.dictation`** for the Dictation API (§11); `client.sync.transcribeLive()` / `openLive()` streaming upload; no-speech fallback options for transcripts |
 | 4.38.0 | `client.llmGateway` (`chatCompletions()`, `listModels()`, `understanding()`), `llmGatewayBaseUrl` option, `LlmGatewayError` |
-| 4.37.1 | `universal-3-6-pro` added to `StreamingSpeechModel`. Not yet in the public docs or model picker — keep using `universal-3-5-pro` |
+| 4.37.1 | `universal-3-6-pro` added to `StreamingSpeechModel` (Universal-3.6 Pro Streaming, the current streaming flagship) |
 | 4.37.0 | **LeMUR removed.** Use the LLM Gateway (§9) |
 | 4.36.7 | `StreamingTranscriber.close()` no longer hangs when the socket closes without a `Termination` message; new optional `terminationTimeout` argument on `close()` (5000ms default, `0` waits indefinitely) |
 | 4.36.6 | `effort` (`"low"` \| `"medium"`) on the Speech Understanding feature requests |
@@ -183,7 +184,7 @@ for (const chapter of transcript.chapters!) {
 
 ### Summarization
 
-The top-level `summarization: true` param is **deprecated**. Use Speech Understanding summarization instead — the SDK's transcript params accept `speech_understanding` directly, so you do NOT need raw fetch for this:
+The top-level `summarization: true` param is **deprecated**. Use Speech Understanding summarization instead. The SDK sends `speech_understanding` through unchanged, so it works at runtime. But its types (still as of 4.41.5) only declare `speaker_identification`, `translation`, and `custom_formatting`, so in TypeScript **cast** the request and read the response loosely:
 
 ```typescript
 const transcript = await client.transcripts.transcribe({
@@ -191,12 +192,18 @@ const transcript = await client.transcripts.transcribe({
   speaker_labels: true,
   speech_understanding: {
     request: {
-      summarization: { summary_type: "bullets", effort: "low" },
+      summarization: { summary_type: "bullets", effort: "low" }, // summary_type is required
+      action_items: { effort: "low" },
     },
-  },
+  } as any, // SDK types lack summarization / action_items
 });
 
-console.log(transcript.speech_understanding?.response?.summarization?.summary);
+const su = (transcript as any).speech_understanding?.response;
+console.log(su?.summarization?.block_summary);
+for (const chapter of su?.summarization?.summary ?? []) {
+  console.log(chapter.headline, chapter.bullets ?? chapter.text);
+}
+for (const item of su?.action_items?.items ?? []) console.log(item.action_item);
 ```
 
 ### Content safety
@@ -289,12 +296,12 @@ import { AssemblyAI } from "assemblyai";
 const client = new AssemblyAI({ apiKey: process.env.ASSEMBLYAI_API_KEY! });
 
 const transcriber = client.streaming.transcriber({
-  speechModel: "universal-3-5-pro",
+  speechModel: "universal-3-6-pro",
   sampleRate: 16_000,
 });
 
 transcriber.on("turn", (turn) => {
-  console.log(`Turn [${turn.start}-${turn.end}]: ${turn.transcript}`);
+  console.log(`Turn ${turn.turn_order}: ${turn.transcript}`);
 
   if (turn.end_of_turn) {
     console.log("-- End of turn --");
@@ -309,6 +316,17 @@ await transcriber.connect();
 // When done:
 // await transcriber.close();
 ```
+
+`speechModel` is a TypeScript union only (no runtime check), and the SDK sends no model when you omit it, so the server default applies (currently `universal-3-6-pro`). Pin it anyway. `"universal-3-6-pro"` type-checks from **4.37.1**.
+
+**Mid-stream updates:** `transcriber.updateConfiguration({...})` takes **snake_case** keys (it forwards them as the raw `UpdateConfiguration` message), unlike the camelCase connect params:
+
+```typescript
+transcriber.updateConfiguration({ min_turn_silence: 1000 });
+transcriber.updateConfiguration({ agent_context: "What's your callback number?" });
+```
+
+Typed keys: `min_turn_silence`, `max_turn_silence`, `vad_threshold`, `keyterms_prompt`, `prompt`, `agent_context`, `interruption_delay`, `language_codes`, `filter_profanity`, `session_heartbeat` (plus `end_of_turn_confidence_threshold` / `format_turns` for Universal Streaming). There is **no `mode`** key in the type (the object is forwarded as-is, so `{ mode: "balanced" } as any` works at runtime), and `previous_context_n_turns` isn't a connect param in the SDK either. `TurnEvent` doesn't type `utterance` or `speaker_confidence`, and `BeginEvent` doesn't type `configuration`, but the SDK passes the raw JSON through, so the fields are there at runtime. With `speakerLabels: true`, listen for `"speakerRevision"`.
 
 `close()` waits for the server's `Termination` message. Since 4.36.7 that wait is bounded: the signature is `close(waitForSessionTermination = true, terminationTimeout = 5000)`, with `terminationTimeout` in milliseconds and `0` meaning wait indefinitely. The socket closes either way.
 
@@ -369,7 +387,7 @@ The first argument accepts a local file path, raw audio bytes, a Blob, or a read
 
 `client.dictation` is a `DictationTranscriber` wrapping the **Dictation API** (`dictation.assemblyai.com`) — a separate service from `client.sync` that returns the verbatim transcript **and** an LLM-cleaned, send-ready rewrite in one call. Cleanup runs by default; `llm_instruction` asks for a different shape.
 
-**Version gate:** added in **4.40.0** (Sept 11, 2026); install the current **4.41.1**. Anything older (e.g. 4.37.x) has no `client.dictation` — check `npm ls assemblyai` in an existing project and fall back to the raw `fetch` example in `references/dictation.md` if it can't upgrade yet.
+**Version gate:** added in **4.40.0** (Sept 11, 2026); install the current **4.41.5**. Anything older (e.g. 4.37.x) has no `client.dictation` — check `npm ls assemblyai` in an existing project and fall back to the raw `fetch` example in `references/dictation.md` if it can't upgrade yet.
 
 ```typescript
 import { AssemblyAI } from "assemblyai";

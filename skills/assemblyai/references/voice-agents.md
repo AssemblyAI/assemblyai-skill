@@ -3,8 +3,8 @@
 AssemblyAI supports four paths for building voice agents:
 
 1. **Speech-to-Speech API** — single WebSocket for full voice agent (speech-in → LLM → speech-out)
-2. **LiveKit Agents** — fastest path to deployment using Universal-3.5 Pro STT
-3. **Pipecat (by Daily)** — open-source, maximum customizability using Universal-3.5 Pro STT
+2. **LiveKit Agents** — fastest path to deployment using Universal-3.6 Pro STT
+3. **Pipecat (by Daily)** — open-source, maximum customizability using Universal-3.6 Pro STT
 4. **Direct WebSocket** — fully custom STT builds (see `streaming.md`)
 
 ## Voice Agent API
@@ -309,9 +309,9 @@ In browsers, pre-handshake failures (like `UNAUTHORIZED`) surface as `close` eve
 
 ## Recommended Model (STT-based paths)
 
-**`universal-3-5-pro`** is the recommended default model for new STT-based voice agent work. The raw streaming API also defaults to it when `speech_model` is omitted; set it explicitly when pinning behavior or using an SDK that requires the field.
+**`universal-3-6-pro`** (Universal-3.6 Pro Streaming, Sept 29, 2026) is the recommended default model for new STT-based voice agent work. The raw streaming API defaults to it when `speech_model` is omitted, but the **LiveKit and Pipecat plugins still default to `universal-3-5-pro`**, so always pass the model explicitly. `universal-3-5-pro` remains fully supported with the same features (19 languages).
 
-| Feature | universal-3-5-pro | universal-streaming-english | universal-streaming-multilingual |
+| Feature | universal-3-6-pro | universal-streaming-english | universal-streaming-multilingual |
 |---------|-------------------|------------------------------|----------------------------------|
 | Turn detection | Punctuation-based | Confidence-based | Confidence-based |
 | Custom prompting | Yes | No | No |
@@ -319,13 +319,13 @@ In browsers, pre-handshake failures (like `UNAUTHORIZED`) surface as `close` eve
 | Speaker diarization | Yes | Yes | Yes |
 | Dynamic mid-session updates | Yes | Yes | Yes |
 | Multilingual code switching | Yes | No | Yes |
-| Languages | 18 (en, es, de, fr, pt, it, tr, nl, sv, no, da, fi, hi, vi, ar, he, ja, zh) | English only | Multiple |
+| Languages | 32 (af, ar, yue, ca, da, nl, en, et, fi, fr, gl, de, he, hi, it, ja, ko, zh, mr, no, nn, fa, pt, ro, ru, es, sv, tr, ur, vi, xh, zu) | English only | 6 (en, es, de, fr, pt, it) |
 
-(`u3-rt-pro` / Universal-3 Pro Streaming was removed from the streaming model picker and spec enum in July 2026 — superseded by `universal-3-5-pro`.)
+(`u3-rt-pro` / Universal-3 Pro Streaming was removed from the streaming model picker and spec enum in July 2026 — superseded by the Universal-3.5/3.6 Pro models.)
 
-`end_of_turn_confidence_threshold` does NOT work with `universal-3-5-pro` — it only applies to the Universal Streaming (English/Multilingual) models.
+`end_of_turn_confidence_threshold` and `format_turns` do NOT work with `universal-3-6-pro`/`universal-3-5-pro`; they only apply to the Universal Streaming (English/Multilingual) models.
 
-## Turn Detection (universal-3-5-pro)
+## Turn Detection (universal-3-6-pro)
 
 1. User pauses for `min_turn_silence` (e.g., 100ms)
 2. Model checks for terminal punctuation (`.` `?` `!`)
@@ -333,9 +333,11 @@ In browsers, pre-handshake failures (like `UNAUTHORIZED`) surface as `close` eve
 4. If not found: partial emitted, listening continues
 5. If silence reaches `max_turn_silence`: turn forced to end regardless
 
+API defaults come from `mode` (min/max turn silence): `min_latency` 128/640ms, `balanced` 128/1280ms (default), `max_accuracy` 512/2560ms (holds turns open longer so entities aren't split). See `streaming.md` → Turn Detection.
+
 ## Silence Settings by Use Case
 
-These are for **Universal Streaming** models. universal-3-5-pro defaults differ (`max_turn_silence` 1536ms, or 768ms with `speaker_labels`).
+These are for **Universal Streaming** models. Universal-3.6/3.5 Pro defaults come from the `mode` preset above (640/768ms with `speaker_labels`).
 
 | Profile | min_turn_silence | max_turn_silence | Use Case |
 |---------|-----------------|-----------------|----------|
@@ -352,8 +354,9 @@ Low `min_turn_silence` can split entities (phone numbers, emails) across turns. 
 ### Setup
 
 ```bash
-# Use a recent LiveKit AssemblyAI plugin for Streaming v3 models.
-pip install "livekit-agents[assemblyai,silero,codecs]~=1.5" python-dotenv
+# universal-3-6-pro needs livekit-agents / livekit-plugins-assemblyai 1.8.0+
+# (LiveKit Inference "assemblyai/universal-3-6-pro" needs 1.8.3+).
+pip install "livekit-agents[assemblyai,silero,codecs]~=1.8" python-dotenv
 # If using MultilingualModel turn detection, also install:
 pip install "livekit-plugins-turn-detector~=1.0"
 ```
@@ -362,7 +365,7 @@ Required env vars: `ASSEMBLYAI_API_KEY`, `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVE
 
 ### Turn Detection Modes
 
-#### STT-based (recommended for universal-3-5-pro)
+#### STT-based (recommended for universal-3-6-pro)
 
 ```python
 from dotenv import load_dotenv
@@ -384,13 +387,11 @@ async def entrypoint(ctx: agents.JobContext):
             endpointing={"min_delay": 0},  # CRITICAL: avoid additive 500ms delay
         ),
         stt=assemblyai.STT(
-            model="universal-3-5-pro",
-            min_turn_silence=100,
-            max_turn_silence=1000,
+            model="universal-3-6-pro",  # the plugin still defaults to universal-3-5-pro
+            mode="balanced",  # use the API's preset (128/1280ms) instead of the plugin's 100ms windows
             vad_threshold=0.3,
-            # continuous_partials defaults to True (both the API and the LiveKit plugin, as of June 2026)
-            #   — steady ~3s partials during long turns. Set False to disable.
-            # interruption_delay=0,  # Optional: faster first partial (~300ms effective). Default 500 (~800ms effective).
+            # continuous_partials defaults to True: ~1s partials during long turns. Set False for ~3s.
+            # interruption_delay=0,  # Optional: faster first partial (256ms effective). Default 500 (756ms effective).
         ),
         vad=silero.VAD.load(activation_threshold=0.3),
     )
@@ -414,7 +415,7 @@ session = AgentSession(
         turn_detection=MultilingualModel(),
         endpointing={"min_delay": 0.5, "max_delay": 3.0},
     ),
-    stt=assemblyai.STT(model="universal-3-5-pro", vad_threshold=0.3),
+    stt=assemblyai.STT(model="universal-3-6-pro", vad_threshold=0.3),
     vad=silero.VAD.load(activation_threshold=0.3),
 )
 ```
@@ -425,17 +426,18 @@ Other modes: **VAD-only** (purely silence-based) and **Manual** (explicit `sessi
 
 | Pitfall | Fix |
 |---------|-----|
-| `max_turn_silence` defaults to **100ms** in LiveKit plugin (API default is 1000ms) | Always set `max_turn_silence=1000` explicitly in STT mode |
+| The plugin sends **100ms** `min_turn_silence`/`max_turn_silence` on U3 Pro models unless you set `mode` (API `balanced` default is 128/1280ms) | In STT mode, pass `mode="balanced"` (the plugin then drops its 100ms windows) or set both silences explicitly (e.g. `min_turn_silence=128, max_turn_silence=1280`) |
 | `endpointing.min_delay` adds **500ms** on top of AssemblyAI endpointing | Set `endpointing={"min_delay": 0}` inside `TurnHandlingOptions` in STT mode |
-| Silero VAD default threshold is 0.5, AssemblyAI default is 0.3 | Set both to 0.3 — mismatch creates a dead zone delaying interruption |
-| Streaming v3 model support requires a recent LiveKit AssemblyAI plugin | Use `livekit-agents[assemblyai]~=1.5` in new projects; older versions may reject newer model strings |
+| Silero VAD default threshold is 0.5, AssemblyAI's U3 Pro default is 0.2 | Set both to 0.3 (`vad_threshold=0.3` on the STT, `activation_threshold=0.3` on Silero). A mismatch creates a dead zone that delays interruption |
+| `universal-3-6-pro` rejected with a validation error | Needs `livekit-agents`/`livekit-plugins-assemblyai` **1.8.0+** (LiveKit Inference `stt="assemblyai/universal-3-6-pro"` needs **1.8.3+**). The plugin's `model` default is still `universal-3-5-pro`, so pass it explicitly |
 | Old API: `turn_detection="stt"` directly on `AgentSession` | Use `turn_handling=TurnHandlingOptions(turn_detection="stt", ...)` (livekit-agents v1.5+) |
-| `continuous_partials` defaults to **`true`** (both the API and the LiveKit plugin, as of June 2026) | Steady ~3s partials during long turns. Set `continuous_partials=False` if you only want silence-based partials |
-| Want faster barge-in / TTFT | Lower `interruption_delay` (default `500`); `interruption_delay=0` → ~300ms effective first partial |
+| `continuous_partials` defaults to **`true`** (both the API and the LiveKit plugin, as of June 2026) | ~1s partials during long turns. `continuous_partials=False` slows mid-turn partials to ~3s |
+| Want faster barge-in / TTFT | Lower `interruption_delay` (default `500` → 756ms effective); `interruption_delay=0` → 256ms effective first partial (the server adds a fixed 256ms) |
+| `mode`, `voice_focus`, `previous_context_n_turns` changed via `update_options()` | Connect-time only in the plugin; set them on `assemblyai.STT(...)` |
 
 You can update `prompt`, `keyterms_prompt`, `min_turn_silence`, `max_turn_silence`, `continuous_partials`, and `interruption_delay` mid-session via `stt.update_options(...)` — e.g. raise `max_turn_silence` during entity dictation, or lower `interruption_delay` when the agent is speaking for faster barge-in.
 
-LiveKit Agents **v1.6.5+** also exposes `agent_context_carryover` as a first-class plugin param — it feeds the agent's spoken replies back as `agent_context` automatically, so the STT knows what question the user is answering (see Context Carryover in `streaming.md`).
+LiveKit automatically forwards the agent's spoken replies to the STT as `agent_context` (on by default, livekit-agents 1.6.6+, and on LiveKit Inference 1.8.3+), so the STT knows what question the user is answering (see Context Carryover in `streaming.md`). Opt out with `AgentSession(..., stt_context_options={"forward_chat_context": False})`. The plugin's old `agent_context_carryover` param is **deprecated**. `language_codes` (max 10) is plugin-only; LiveKit Inference doesn't take it yet.
 
 ---
 
@@ -444,54 +446,57 @@ LiveKit Agents **v1.6.5+** also exposes `agent_context_carryover` as a first-cla
 ### Setup
 
 ```bash
-pip install "pipecat-ai[assemblyai,openai,cartesia]"
+# universal-3-6-pro needs pipecat-ai 1.9.0+; steering language_codes across all 32 languages needs 1.11.0+
+pip install "pipecat-ai[assemblyai,openai,cartesia]>=1.11"
 # or swap providers:
-pip install "pipecat-ai[assemblyai,anthropic,elevenlabs]"
+pip install "pipecat-ai[assemblyai,anthropic,elevenlabs]>=1.11"
 ```
+
+Configure the service with `settings=AssemblyAISTTService.Settings(...)`. The older `connection_params=AssemblyAIConnectionParams(...)` is **deprecated** (removed in Pipecat 2.0), and it can't carry newer fields like `mode`, `voice_focus`, `language_codes`, or `agent_context`. The plugin's `model` default is still `universal-3-5-pro`, so **pass `model="universal-3-6-pro"`**.
 
 ### Turn Detection Modes
 
-#### Pipecat-controlled (default, recommended)
+#### AssemblyAI's built-in turn detection (recommended)
 
 ```python
+import os
+
 from pipecat.services.assemblyai.stt import AssemblyAISTTService
-from pipecat.services.assemblyai.config import AssemblyAIConnectionParams
 
 stt = AssemblyAISTTService(
     api_key=os.getenv("ASSEMBLYAI_API_KEY"),
-    connection_params=AssemblyAIConnectionParams(
-        speech_model="universal-3-5-pro",
-        min_turn_silence=100,
-    ),
-    vad_force_turn_endpoint=True,  # Default — Pipecat controls turns
-)
-```
-
-In Pipecat mode, VAD + Smart Turn analyzer controls endpointing. `max_turn_silence` auto-syncs with `min_turn_silence`. A `ForceEndpoint` message is sent to AssemblyAI when silence is detected.
-
-#### AssemblyAI's built-in turn detection
-
-```python
-stt = AssemblyAISTTService(
-    api_key=os.getenv("ASSEMBLYAI_API_KEY"),
-    connection_params=AssemblyAIConnectionParams(
-        speech_model="universal-3-5-pro",
-        min_turn_silence=100,
-        max_turn_silence=1000,
+    settings=AssemblyAISTTService.Settings(
+        model="universal-3-6-pro",
+        mode="balanced",  # or set min_turn_silence / max_turn_silence explicitly
     ),
     vad_force_turn_endpoint=False,  # AssemblyAI controls turns
 )
 ```
 
-### Keyterms Boosting
+#### Pipecat-controlled (Pipecat's default)
 
 ```python
 stt = AssemblyAISTTService(
     api_key=os.getenv("ASSEMBLYAI_API_KEY"),
-    connection_params=AssemblyAIConnectionParams(
-        speech_model="universal-3-5-pro",
+    settings=AssemblyAISTTService.Settings(
+        model="universal-3-6-pro",
         min_turn_silence=100,
+    ),
+    vad_force_turn_endpoint=True,  # Default — Pipecat's VAD + Smart Turn control turns
+)
+```
+
+In Pipecat mode, VAD + Smart Turn analyzer controls endpointing. `max_turn_silence` is always forced equal to `min_turn_silence`, and a `ForceEndpoint` message is sent to AssemblyAI when VAD detects silence.
+
+### Keyterms and Prompting
+
+```python
+stt = AssemblyAISTTService(
+    api_key=os.getenv("ASSEMBLYAI_API_KEY"),
+    settings=AssemblyAISTTService.Settings(
+        model="universal-3-6-pro",
         keyterms_prompt=["Xiomara", "Saoirse", "Pipecat", "AssemblyAI"],
+        prompt="Dental office scheduling call.",  # combinable with keyterms_prompt on U3 Pro models
     ),
 )
 ```
@@ -500,37 +505,37 @@ stt = AssemblyAISTTService(
 
 ```python
 from pipecat.frames.frames import STTUpdateSettingsFrame
-from pipecat.services.assemblyai.stt import AssemblyAISTTSettings
 
 await task.queue_frame(
     STTUpdateSettingsFrame(
-        delta=AssemblyAISTTSettings(
-            connection_params=AssemblyAIConnectionParams(
-                keyterms_prompt=["NewName", "NewCompany"],
-                min_turn_silence=200,
-                max_turn_silence=3000,
-            )
+        delta=AssemblyAISTTService.Settings(
+            keyterms_prompt=["NewName", "NewCompany"],
+            min_turn_silence=200,
+            max_turn_silence=3000,
         )
     )
 )
 ```
+
+In `pipecat-ai` 1.12, only `agent_context` and `language_codes` are applied **live**, via `UpdateConfiguration`. Changing any other setting (keyterms, prompt, silences, `mode`, …) makes the service **reconnect** the WebSocket, which drops the server-side conversation history. The last `agent_context` is re-seeded on reconnect.
 
 ### Speaker Diarization
 
 ```python
 stt = AssemblyAISTTService(
     api_key=os.getenv("ASSEMBLYAI_API_KEY"),
-    connection_params=AssemblyAIConnectionParams(
-        speech_model="universal-3-5-pro",
+    settings=AssemblyAISTTService.Settings(
+        model="universal-3-6-pro",
         speaker_labels=True,
     ),
     speaker_format="<Speaker {speaker}>{text}</Speaker {speaker}>",
 )
 ```
 
-### Pipecat Pitfall
+### Pipecat Pitfalls
 
-`keyterms_prompt` and `prompt` cannot be used simultaneously — choose one.
+- `prompt` and `keyterms_prompt` **can** be combined on U3 Pro models (`universal-3-6-pro`/`universal-3-5-pro`); older Pipecat releases rejected the combination client-side. On Universal Streaming models only `keyterms_prompt` applies.
+- The agent's replies are fed back as `agent_context` **automatically** by Pipecat's context aggregator. Set `agent_context` in `Settings` only to seed the opening line, and call `update_agent_context()` only in custom pipelines. `previous_context_n_turns=0` disables the automatic feed. The plugin clips `agent_context` to ~1500 characters.
 
 ---
 

@@ -208,7 +208,7 @@ Generates a chaptered summary of the transcript — each chapter has timestamps,
 
 ### Response
 
-`speech_understanding.response.summarization` → `{ status, summary_type, effort, summary: [{ start, end, text, headline }] }`:
+`speech_understanding.response.summarization` → `{ status, summary_type, effort, block_summary, summary: [...] }`. `block_summary` is a single-string summary of the whole transcript. Each `summary` chapter has `start`, `end`, `headline`, and either `text` (`paragraph`) or `bullets: [string]` (`bullets`). Omitting `summary_type` returns `400 invalid summary_type, must be one of: bullets, paragraph`:
 
 ```json
 {
@@ -218,6 +218,7 @@ Generates a chaptered summary of the transcript — each chapter has timestamps,
         "status": "success",
         "summary_type": "paragraph",
         "effort": "low",
+        "block_summary": "Smoke from Canadian wildfires is degrading air quality across the US...",
         "summary": [
           { "start": 240, "end": 37100, "text": "Smoke from hundreds of Canadian wildfires...", "headline": "Smoke from Canadian Wildfires Affects US Air Quality" }
         ]

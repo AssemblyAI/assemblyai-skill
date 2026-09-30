@@ -3,20 +3,22 @@
 ## Installation
 
 ```bash
-pip install "assemblyai>=1.5.4"
+pip install "assemblyai>=1.6.1"
 ```
 
-**1.5.4 is the latest release (Sept 14, 2026).** Install it, or `pip install -U assemblyai` for whatever is newest if you are reading this later. The matched JS/TS version is `assemblyai@^4.41.1` (Sept 11, 2026).
+**1.6.1 is the latest release (Sept 24, 2026).** Install it, or `pip install -U assemblyai` for whatever is newest if you are reading this later. The matched JS/TS version is `assemblyai@^4.41.5` (Sept 24, 2026).
 
 Anything below **1.5.2** has no `DictationTranscriber` — check `pip show assemblyai` before writing code against it in an existing project.
 
-What 1.3.0 → 1.5.4 added, newest first:
+What 1.1.0 → 1.6.1 added, newest first:
 
 | Version | Change |
 |---------|--------|
-| 1.5.4 | Speech Understanding configurable through `TranscriptionConfig`; `universal-3-6` added to the streaming `SpeechModel` enum |
+| 1.6.1 | Streaming `speaker_labels_revision_interval_ms` (mid-session `SpeakerRevision` messages); `LLMGateway` / `AsyncLLMGateway` client module |
+| 1.5.4 | Speech Understanding configurable through `TranscriptionConfig` |
 | 1.5.2 | **Dictation API** (§12): `DictationTranscriber`, `AsyncDictationTranscriber`, `DictationConfig` (incl. `stt_prompt`), `DictationError`, `settings.dictation_base_url`; Sync STT streaming upload via `SyncTranscriber.transcribe_live()` / push-style `open_live()`; sync and dictation config caps raised to match the service |
 | 1.3.0 | `short_file_diarization_method` on `SpeakerOptions`; `localization` on `language_detection_options`; PEP 561 `py.typed` marker |
+| 1.1.0 | `universal-3-6-pro` added to the streaming `SpeechModel` enum (1.0.0 rejects it with a `ValidationError`) |
 
 Most 0.x code runs on 1.x unchanged, but four things were removed or renamed in 1.0.0 (Aug 14, 2026) — see §14 for the full migration. 1.0.0 is the oldest release with the current API surface; anything on 0.x is a different SDK generation.
 
@@ -283,24 +285,50 @@ for result in transcript.content_safety.results:
 
 ### Summarization
 
-The top-level `summarization=True` param is **deprecated**. Use Speech Understanding summarization instead — `TranscriptionConfig` accepts the `speech_understanding` object directly, so you do NOT need to drop to raw REST for this:
+The top-level `summarization=True` param is **deprecated**. Use Speech Understanding summarization instead. **Don't pass it through `TranscriptionConfig(speech_understanding=...)`.** The SDK's typed model (`SpeechUnderstandingFeatureRequests`, still true as of 1.6.1) only knows `speaker_identification`, `translation`, and `custom_formatting`, so `summarization` and `action_items` are **silently dropped**: the API then rejects the request with `speech_understanding.request is empty`, and the SDK's `Transcript` wouldn't expose the result anyway. Send the request over REST instead:
 
 ```python
-config = aai.TranscriptionConfig(
-    speaker_labels=True,
-    speech_understanding={
-        "request": {
-            "summarization": {"summary_type": "bullets", "effort": "low"},
-        }
+import time
+
+import requests
+
+API_KEY = "YOUR_API_KEY"
+BASE = "https://api.assemblyai.com/v2/transcript"
+headers = {"Authorization": API_KEY}
+
+job = requests.post(
+    BASE,
+    headers=headers,
+    json={
+        "audio_url": "https://example.com/audio.mp3",
+        "speaker_labels": True,
+        "speech_understanding": {
+            "request": {
+                "summarization": {"summary_type": "bullets", "effort": "low"},  # summary_type is required
+                "action_items": {"effort": "low"},
+            }
+        },
     },
 )
-transcript = transcriber.transcribe("https://example.com/audio.mp3", config=config)
+job.raise_for_status()
+transcript_id = job.json()["id"]
 
-su = transcript.json_response.get("speech_understanding", {})
-print(su.get("response", {}).get("summarization", {}).get("summary"))
+while True:
+    transcript = requests.get(f"{BASE}/{transcript_id}", headers=headers).json()
+    if transcript["status"] in ("completed", "error"):
+        break
+    time.sleep(3)
+
+response = transcript.get("speech_understanding", {}).get("response", {})
+summary = response.get("summarization", {})
+print(summary.get("block_summary"))
+for chapter in summary.get("summary", []):
+    print(chapter["headline"], chapter.get("bullets") or chapter.get("text"))
+for item in response.get("action_items", {}).get("items", []):
+    print(item["action_item"])
 ```
 
-Typed request models exist too (`aai.types.SpeechUnderstandingRequest`). For fully custom summaries, use the LLM Gateway (section 9).
+The SDK works for `speaker_identification`, `translation`, and `custom_formatting` (typed request models in `aai.types`). For fully custom summaries, use the LLM Gateway (section 9).
 
 > **Note:** `summarization` and `auto_chapters` are mutually exclusive. Do not enable both in the same config.
 
@@ -361,7 +389,7 @@ print(transcript.text)
 
 Use `assemblyai.streaming.v3` for new realtime STT code. In 1.x the classes are named `RealTime*` — `RealTimeTranscriber`, `RealTimeTranscriberOptions`, `RealTimeParameters`, `RealTimeEvents`, `RealTimeError`. The former `Streaming*` names are still bound to the same objects (so `isinstance` checks and old imports keep working), but write the `RealTime*` names.
 
-Set `speech_model="universal-3-5-pro"` explicitly; the raw API defaults to it, but the SDK parameter is required. `sample_rate` is required for PCM encodings and optional for the self-describing compressed ones (`opus`, `ogg_opus`, `aac`).
+Set `speech_model="universal-3-6-pro"` explicitly. The SDK sends no model when you omit it, so the server default applies (currently `universal-3-6-pro`), but pinning it keeps behavior deterministic. The enum validates locally: `universal-3-6-pro` needs **≥1.1.0**. `sample_rate` is required for PCM encodings and optional for the self-describing compressed ones (`opus`, `ogg_opus`, `aac`).
 
 ```python
 from assemblyai.streaming.v3 import RealTimeParameters, RealTimeTranscriber
@@ -370,7 +398,7 @@ transcriber = RealTimeTranscriber(api_key="YOUR_API_KEY")
 
 transcriber.connect(
     RealTimeParameters(
-        speech_model="universal-3-5-pro",
+        speech_model="universal-3-6-pro",
         sample_rate=16_000,
     )
 )
@@ -387,6 +415,28 @@ transcriber.disconnect(terminate=True)
 **The SDK does not capture microphone audio.** `assemblyai.extras` and its `MicrophoneStream` were removed in 1.0.0, along with the `[extras]` install option. Bring your own capture — `pyaudio`, `sounddevice`, a loopback device, a file — and pass 16-bit PCM chunks to `stream()`.
 
 For the async client, use `AsyncRealTimeTranscriber` (formerly `AsyncStreamingClient`) from the same module.
+
+**Mid-stream updates** go through `set_params()` with a `RealTimeSessionParameters`. There is no `update_configuration()` method, whatever some docs snippets show:
+
+```python
+from assemblyai.streaming.v3 import RealTimeSessionParameters, RealTimeTranscriber
+
+transcriber = RealTimeTranscriber(api_key="YOUR_API_KEY")
+
+# e.g. the agent just asked for a phone number: hold the turn open longer
+transcriber.set_params(RealTimeSessionParameters(min_turn_silence=1000))
+
+# feed the agent's spoken reply back as context for the next user turn
+transcriber.set_params(RealTimeSessionParameters(agent_context="What's your callback number?"))
+```
+
+`RealTimeSessionParameters` covers `min_turn_silence`, `max_turn_silence`, `vad_threshold`, `keyterms_prompt`, `prompt`, `agent_context`, `interruption_delay`, `language_codes`, `filter_profanity`, `session_heartbeat` (plus `end_of_turn_confidence_threshold` / `format_turns` for Universal Streaming). `filter_profanity` is also in the model, but set it at connect time. It has **no `mode` field**, and unknown fields are silently dropped, so to switch `mode` mid-stream you need the raw WebSocket `UpdateConfiguration` message.
+
+**SDK gaps to know about (1.6.1):**
+- `previous_context_n_turns` isn't a `RealTimeParameters` field and gets dropped silently. Leave it at the server default or use the raw WebSocket.
+- `TurnEvent` has no `utterance` or `speaker_confidence`, and `Word` has no `speaker_confidence`. Pydantic drops those fields on parse.
+- `BeginEvent.configuration` is typed with `model`, `mode`, and `api_version` only. Check `event.configuration.model` to confirm which model you got.
+- With `speaker_labels=True`, register `RealTimeEvents.SpeakerRevision` to receive `SpeakerRevisionEvent` (`revisions[{turn_order, speaker_label, words}]`). `speaker_labels_revision_interval_ms` (1.6.1+) adds mid-session revisions on top of the final one.
 
 ---
 
@@ -476,7 +526,7 @@ Accepts a local file path, raw bytes, or a stream — **not a URL**. There is al
 
 `DictationTranscriber` (`assemblyai.dictation.v1`, also `aai.DictationTranscriber`) wraps the **Dictation API** (`dictation.assemblyai.com`) — a separate service from Sync STT that returns the verbatim transcript **and** an LLM-cleaned, send-ready rewrite in one call. Cleanup runs by default; `llm_instruction` asks for a different shape.
 
-**Version gate:** added in **1.5.2** (Sept 11, 2026); install the current **1.5.4**. Anything older (e.g. 1.3.0) has no `DictationTranscriber` — check `pip show assemblyai` in an existing project and fall back to the raw HTTP example in `references/dictation.md` if it can't upgrade yet.
+**Version gate:** added in **1.5.2** (Sept 11, 2026); install the current **1.6.1**. Anything older (e.g. 1.3.0) has no `DictationTranscriber` — check `pip show assemblyai` in an existing project and fall back to the raw HTTP example in `references/dictation.md` if it can't upgrade yet.
 
 ```python
 import assemblyai as aai

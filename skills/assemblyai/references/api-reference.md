@@ -579,7 +579,7 @@ curl -X POST https://dictation.assemblyai.com/v1/transcribe/live \
   -F 'audio=@sample.wav;type=audio/wav'
 ```
 
-**SDKs:** `DictationTranscriber` / `AsyncDictationTranscriber` in Python ≥1.5.2 (`assemblyai.dictation.v1`; `aai.settings.dictation_base_url` for residency) and `client.dictation` in Node ≥4.40.0 (`dictationBaseUrl` client option). Install the current releases (Python 1.5.4, Node 4.41.1); on an older SDK, call over HTTP. See `references/dictation.md`.
+**SDKs:** `DictationTranscriber` / `AsyncDictationTranscriber` in Python ≥1.5.2 (`assemblyai.dictation.v1`; `aai.settings.dictation_base_url` for residency) and `client.dictation` in Node ≥4.40.0 (`dictationBaseUrl` client option). Install the current releases (Python 1.6.1, Node 4.41.5); on an older SDK, call over HTTP. See `references/dictation.md`.
 
 ## 18. Voice Agents REST API (Stored Agents)
 

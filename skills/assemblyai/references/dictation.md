@@ -342,9 +342,9 @@ console.log(rewrite);
 
 ## SDK support
 
-Dictation support landed in **Python SDK 1.5.2** and **Node SDK 4.40.0**, both released on **Sept 11, 2026**; install the current releases, **Python 1.5.4** (`pip install "assemblyai>=1.5.4"`) and **Node 4.41.1** (`npm i assemblyai@^4.41.1`). Check `pip show assemblyai` / `npm ls assemblyai` in an existing project before writing code against the SDK path; on an older SDK, use the raw HTTP examples above. Both SDKs validate the config caps client-side (6000 / 100 terms + 8000 / 2048), strip whitespace from keyterms and drop empty ones, and add a derived `final_text` (`llm_response` falling back to `text`).
+Dictation support landed in **Python SDK 1.5.2** and **Node SDK 4.40.0**, both released on **Sept 11, 2026**; install the current releases, **Python 1.6.1** (`pip install "assemblyai>=1.6.1"`) and **Node 4.41.5** (`npm i assemblyai@^4.41.5`). Check `pip show assemblyai` / `npm ls assemblyai` in an existing project before writing code against the SDK path; on an older SDK, use the raw HTTP examples above. Both SDKs validate the config caps client-side (6000 / 100 terms + 8000 / 2048), strip whitespace from keyterms and drop empty ones, and add a derived `final_text` (`llm_response` falling back to `text`).
 
-### Python SDK (≥1.5.4 recommended; dictation since 1.5.2)
+### Python SDK (≥1.6.1 recommended; dictation since 1.5.2)
 
 ```python
 import assemblyai as aai
@@ -391,7 +391,7 @@ with aai.DictationTranscriber() as transcriber:
     print(session.result().final_text)
 ```
 
-### Node SDK (≥4.41.1 recommended; dictation since 4.40.0)
+### Node SDK (≥4.41.5 recommended; dictation since 4.40.0)
 
 ```typescript
 import { AssemblyAI } from "assemblyai";

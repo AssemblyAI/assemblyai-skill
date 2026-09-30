@@ -121,6 +121,9 @@ else:
     aai.settings.api_key = os.environ.get("{API_KEY_ENV}", "test-token")
     transcriber = aai.Transcriber()
 """
+    # The block already runs inside an event loop, so a top-level
+    # asyncio.run(main()) becomes a plain await.
+    code = re.sub(r"^asyncio\.run\((.*)\)\s*$", r"await \1", code, flags=re.MULTILINE)
     wrapped = "async def __codeblock_main__():\n" + textwrap.indent(code, "    ")
     return f"{prelude}\n{wrapped}\n"
 
@@ -216,6 +219,7 @@ def _run_shell(block: CodeBlock, tmp_path: Path) -> None:
 
 def _strip_typescript_only_syntax(code: str) -> str:
     code = re.sub(r"(?<=[A-Za-z0-9_\]\)])!", "", code)
+    code = re.sub(r"\s+as\s+any\b", "", code)
     return code
 
 
