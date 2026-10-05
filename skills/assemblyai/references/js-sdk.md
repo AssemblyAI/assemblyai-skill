@@ -330,6 +330,24 @@ Typed keys: `min_turn_silence`, `max_turn_silence`, `vad_threshold`, `keyterms_p
 
 `close()` waits for the server's `Termination` message. Since 4.36.7 that wait is bounded: the signature is `close(waitForSessionTermination = true, terminationTimeout = 5000)`, with `terminationTimeout` in milliseconds and `0` meaning wait indefinitely. The socket closes either way.
 
+### Streaming PII redaction
+
+Enable real-time PII redaction in streaming sessions with `redactPii: true`:
+
+```typescript
+const transcriber = client.streaming.transcriber({
+  speechModel: "universal-3-5-pro",
+  sampleRate: 16_000,
+  redactPii: true,
+  redactPiiPolicies: [
+    "person_name",
+    "phone_number",
+    "email_address",
+  ],
+  redactPiiSub: "entity_name", // or "hash"
+});
+```
+
 ---
 
 ## 9. LLM Gateway

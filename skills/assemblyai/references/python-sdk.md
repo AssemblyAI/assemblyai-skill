@@ -414,6 +414,35 @@ transcriber.disconnect(terminate=True)
 
 **The SDK does not capture microphone audio.** `assemblyai.extras` and its `MicrophoneStream` were removed in 1.0.0, along with the `[extras]` install option. Bring your own capture — `pyaudio`, `sounddevice`, a loopback device, a file — and pass 16-bit PCM chunks to `stream()`.
 
+### Streaming PII Redaction
+
+Enable real-time PII redaction during streaming by setting `redact_pii=True` on `RealTimeParameters`. When enabled, `include_partial_turns` automatically defaults to `False` so unredacted partials never reach the client:
+
+```python
+from assemblyai.streaming.v3 import (
+    RealTimeParameters,
+    RealTimeTranscriber,
+    StreamingPiiPolicy,
+    StreamingPiiSubstitution,
+)
+
+transcriber = RealTimeTranscriber(api_key="YOUR_API_KEY")
+
+transcriber.connect(
+    RealTimeParameters(
+        speech_model="universal-3-5-pro",
+        sample_rate=16_000,
+        redact_pii=True,
+        redact_pii_policies=[
+            StreamingPiiPolicy.person_name,
+            StreamingPiiPolicy.phone_number,
+            StreamingPiiPolicy.email_address,
+        ],
+        redact_pii_sub=StreamingPiiSubstitution.entity_name,  # or .hash
+    )
+)
+```
+
 For the async client, use `AsyncRealTimeTranscriber` (formerly `AsyncStreamingClient`) from the same module.
 
 **Mid-stream updates** go through `set_params()` with a `RealTimeSessionParameters`. There is no `update_configuration()` method, whatever some docs snippets show:
