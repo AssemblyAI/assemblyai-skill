@@ -37,7 +37,7 @@ Submit an audio file for transcription. Send a JSON body with the parameters bel
 | `keyterms_prompt` | array | List of key terms/phrases (strings) to boost recognition accuracy — up to **1000** terms for Universal-3.5 Pro, **200** for Universal-2, max **6 words per phrase**. **Complementary with `prompt`** — both can be set together. |
 | `language_code` | string | Language code (e.g., `"en_us"`, `"es"`, `"fr"`). Defaults to `"en_us"`. |
 | `language_detection` | boolean | Enable automatic language detection. Default `false`. |
-| `language_detection_options` | object | Options for language detection: `expected_languages` (array of language codes), `fallback_language` (string), `code_switching` (boolean, Universal-2 only), `code_switching_confidence_threshold` (float, default 0.3). |
+| `language_detection_options` | object | Options for language detection: `expected_languages` (array of language codes), `fallback_language` (string), `code_switching` (boolean, Universal-2 only), `code_switching_confidence_threshold` (float, default 0.3), `localization` (array of regional English variants: `"en_au"`, `"en_uk"`). |
 | `language_confidence_threshold` | float | Minimum confidence threshold for language detection (0-1). |
 | `speaker_labels` | boolean | Enable speaker diarization. Default `false`. |
 | `sentiment_analysis` | boolean | Enable sentiment analysis on each sentence. Default `false`. |
@@ -67,7 +67,7 @@ Submit an audio file for transcription. Send a JSON body with the parameters bel
 | `auto_highlights` | boolean | Enable key phrase detection. Default `false`. |
 | `speech_understanding` | object | Enable Speech Understanding inline. Features nest under `speech_understanding.request` (the `request` wrapper is required): `translation`, `speaker_identification`, and/or `custom_formatting`. See `speech-understanding.md`. |
 | `speakers_expected` | integer | Hint for number of speakers (diarization). Deprecated in favor of `speaker_options`. |
-| `speaker_options` | object | Diarization options: `min_speakers_expected` (int, default 1), `max_speakers_expected` (int). |
+| `speaker_options` | object | Diarization options: `min_speakers_expected` (int, >= 1), `max_speakers_expected` (int, >= 1), `use_two_stage_clustering` (boolean), `short_file_diarization_method` (`"deliberate"` (default), `"balanced"`, `"conservative"`, `"aggressive"`), `long_file_diarization_method` (`"standard"` (default), `"experimental"`). |
 | `temperature` | float | 0–1. Controls randomness. Universal-3.5 Pro only. |
 | `domain` | string | Domain-specific model variant. `"medical-v1"` enables Medical Mode (EN, ES, DE, FR). Supported on Universal-3.5 Pro and Universal-2. |
 | `remove_audio_tags` | string | Remove inline annotations from the transcript. `"all"` removes all (audio event markers and speaker cues); `"speaker"` removes only speaker cues while keeping other annotations. Universal-3.5 Pro only. |
