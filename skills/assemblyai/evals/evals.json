@@ -21,7 +21,7 @@
       "expected_output": "A LiveKit STT setup using universal-3-6-pro with correctly tuned endpointing/VAD parameters and domain keyterms, avoiding deprecated parameters and removed models.",
       "files": [],
       "assertions": [
-        {"text": "Passes model=\"universal-3-6-pro\" explicitly (the plugin still defaults to universal-3-5-pro; not u3-rt-pro, which was removed July 2026, or older streaming models)", "type": "semantic"},
+        {"text": "Passes model=\"universal-3-6-pro\" explicitly (plugin releases before 1.8.4 default to universal-3-5-pro; not u3-rt-pro, which was removed July 2026, or older streaming models)", "type": "semantic"},
         {"text": "Sets mode or max_turn_silence explicitly (not relying on the LiveKit plugin's 100ms default turn-silence windows)", "type": "semantic"},
         {"text": "If it pins livekit-agents, pins 1.8.0 or newer (the first release that accepts universal-3-6-pro)", "type": "semantic"},
         {"text": "Sets endpointing min_delay to 0 (via TurnHandlingOptions) to avoid the additive 500ms delay", "type": "semantic"},

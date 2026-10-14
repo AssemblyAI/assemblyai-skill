@@ -2,14 +2,14 @@
 
 AssemblyAI supports four paths for building voice agents:
 
-1. **Speech-to-Speech API** — single WebSocket for full voice agent (speech-in → LLM → speech-out)
+1. **Voice Agent API** — single WebSocket for full voice agent (speech-in → LLM → speech-out), STT on Universal-3.6 Pro
 2. **LiveKit Agents** — fastest path to deployment using Universal-3.6 Pro STT
 3. **Pipecat (by Daily)** — open-source, maximum customizability using Universal-3.6 Pro STT
 4. **Direct WebSocket** — fully custom STT builds (see `streaming.md`)
 
 ## Voice Agent API
 
-AssemblyAI's Voice Agent API is a single WebSocket that handles the full voice agent loop: speech-in → LLM → speech-out. It includes built-in turn detection, TTS, tool calling, and barge-in handling.
+AssemblyAI's Voice Agent API is a single WebSocket that handles the full voice agent loop: speech-in → LLM → speech-out. It includes built-in turn detection, TTS, tool calling, and barge-in handling. Its speech recognition runs on **Universal-3.6 Pro** by default; the documented session config has no STT model field (tune recognition with the Session-Level STT Tuning fields below).
 
 ### Connection
 
@@ -178,7 +178,7 @@ Stored-agent `min_silence`/`max_silence` are honored on **telephony calls** too 
 | `transcription_mode` | `balanced` (default) / `min_latency` / `max_accuracy` | Latency-vs-accuracy preset for the underlying STT |
 | `transcription_prompt` | string ≤1750 chars | Contextual *description* of the audio for STT vocabulary biasing — distinct from `system_prompt` (which steers the LLM, not the transcription) |
 | `continuous_partials` | boolean | Steadier partial-transcript cadence during long user turns |
-| `language_codes` | list of ISO 639-1 codes | Pin the expected input language(s) instead of auto-detection across all 18 |
+| `language_codes` | list of ISO 639-1 codes | Pin the expected input language(s) instead of native code-switching across all supported input languages |
 | `voice_focus` / `voice_focus_threshold` | `near-field`/`far-field`; float 0–1 | Noise suppression before STT (background chatter, keyboard, hum). Applied at stream init |
 
 ### Tool Call Pattern
@@ -266,7 +266,7 @@ For browser apps, enable echo cancellation via `getUserMedia({ audio: { echoCanc
 
 Set a voice via `session.output.voice` in `session.update` **before `session.ready`**. `output.voice` and `output.format` are immutable once the session is established — the voice **cannot be changed mid-conversation**. (`output.volume` is the exception — it remains mutable.) Default is `ivy`.
 
-**Every voice speaks all output languages** — 🇺🇸 English, French, German, Italian, Portuguese, Spanish, Hindi, Mandarin, Russian, Korean, and Japanese. The two groups below differ only by the voice's *primary accent*, not which languages it can speak. Officially supported **output** languages (those with at least one native/primary-accent voice) are English, French, Italian, Spanish, Hindi, Russian, and — since the July 2026 voice generation — German and Portuguese; Turkish, Dutch, and Swedish are on the roadmap. **Input** recognition uses Universal-3.5 Pro Streaming and covers **18 languages** with native code-switching (en, es, de, fr, pt, it, tr, nl, sv, no, da, fi, hi, vi, ar, he, ja, zh) — an agent can speak an output language it can't transcribe (useful for translation-style flows).
+**Every voice speaks all output languages** — 🇺🇸 English, French, German, Italian, Portuguese, Spanish, Hindi, Mandarin, Russian, Korean, and Japanese. The two groups below differ only by the voice's *primary accent*, not which languages it can speak. Officially supported **output** languages (those with at least one native/primary-accent voice) are English, French, Italian, Spanish, Hindi, Russian, and — since the July 2026 voice generation — German and Portuguese; Turkish, Dutch, and Swedish are on the roadmap. **Input** recognition defaults to Universal-3.6 Pro Streaming, with native code-switching. The Voice Agent docs have listed 18 input languages (en, es, de, fr, pt, it, tr, nl, sv, no, da, fi, hi, vi, ar, he, ja, zh); check the current docs before relying on the languages only Universal-3.6 Pro adds. An agent can speak an output language it can't transcribe (useful for translation-style flows).
 
 **American-English accent** (carried into other languages):
 `ivy`, `james`, `tyler`, `winter`, `bella`, `david`, `kyle`, `helen`, `martha`, `river`, `emma`, `victor`, `eleanor`
@@ -309,7 +309,7 @@ In browsers, pre-handshake failures (like `UNAUTHORIZED`) surface as `close` eve
 
 ## Recommended Model (STT-based paths)
 
-**`universal-3-6-pro`** (Universal-3.6 Pro Streaming, Sept 29, 2026) is the recommended default model for new STT-based voice agent work. The raw streaming API defaults to it when `speech_model` is omitted, but the **LiveKit and Pipecat plugins still default to `universal-3-5-pro`**, so always pass the model explicitly. `universal-3-5-pro` remains fully supported with the same features (19 languages).
+**`universal-3-6-pro`** (Universal-3.6 Pro Streaming, Sept 29, 2026) is the recommended default model for new STT-based voice agent work. The raw streaming API defaults to it when `speech_model` is omitted, and so does the Python LiveKit plugin from 1.8.4, but **Pipecat (`pipecat-ai` 1.12) and the Node LiveKit plugin (`@livekit/agents-plugin-assemblyai` 1.9) still default to `universal-3-5-pro`**, so always pass the model explicitly. `universal-3-5-pro` remains fully supported with the same features (19 languages).
 
 | Feature | universal-3-6-pro | universal-streaming-english | universal-streaming-multilingual |
 |---------|-------------------|------------------------------|----------------------------------|
@@ -355,7 +355,8 @@ Low `min_turn_silence` can split entities (phone numbers, emails) across turns. 
 
 ```bash
 # universal-3-6-pro needs livekit-agents / livekit-plugins-assemblyai 1.8.0+
-# (LiveKit Inference "assemblyai/universal-3-6-pro" needs 1.8.3+).
+# (LiveKit Inference "assemblyai/universal-3-6-pro" needs 1.8.3+;
+# the plugin defaults to universal-3-6-pro from 1.8.4).
 pip install "livekit-agents[assemblyai,silero,codecs]~=1.8" python-dotenv
 # If using MultilingualModel turn detection, also install:
 pip install "livekit-plugins-turn-detector~=1.0"
@@ -387,7 +388,7 @@ async def entrypoint(ctx: agents.JobContext):
             endpointing={"min_delay": 0},  # CRITICAL: avoid additive 500ms delay
         ),
         stt=assemblyai.STT(
-            model="universal-3-6-pro",  # the plugin still defaults to universal-3-5-pro
+            model="universal-3-6-pro",  # explicit: plugin releases before 1.8.4 default to universal-3-5-pro
             mode="balanced",  # use the API's preset (128/1280ms) instead of the plugin's 100ms windows
             vad_threshold=0.3,
             # continuous_partials defaults to True: ~1s partials during long turns. Set False for ~3s.
@@ -426,10 +427,10 @@ Other modes: **VAD-only** (purely silence-based) and **Manual** (explicit `sessi
 
 | Pitfall | Fix |
 |---------|-----|
-| The plugin sends **100ms** `min_turn_silence`/`max_turn_silence` on U3 Pro models unless you set `mode` (API `balanced` default is 128/1280ms) | In STT mode, pass `mode="balanced"` (the plugin then drops its 100ms windows) or set both silences explicitly (e.g. `min_turn_silence=128, max_turn_silence=1280`) |
+| The plugin sends **100ms** `min_turn_silence`/`max_turn_silence` on U3 Pro models unless you set `mode` (API `balanced` default is 128/1280ms). `max_turn_silence` has no default of its own: when unset, the plugin sends it equal to `min_turn_silence`, even with `mode` set | In STT mode, pass `mode="balanced"` (the plugin then drops its 100ms windows) or set both silences explicitly (e.g. `min_turn_silence=128, max_turn_silence=1280`). Don't set only `min_turn_silence` |
 | `endpointing.min_delay` adds **500ms** on top of AssemblyAI endpointing | Set `endpointing={"min_delay": 0}` inside `TurnHandlingOptions` in STT mode |
 | Silero VAD default threshold is 0.5, AssemblyAI's U3 Pro default is 0.2 | Set both to 0.3 (`vad_threshold=0.3` on the STT, `activation_threshold=0.3` on Silero). A mismatch creates a dead zone that delays interruption |
-| `universal-3-6-pro` rejected with a validation error | Needs `livekit-agents`/`livekit-plugins-assemblyai` **1.8.0+** (LiveKit Inference `stt="assemblyai/universal-3-6-pro"` needs **1.8.3+**). The plugin's `model` default is still `universal-3-5-pro`, so pass it explicitly |
+| `universal-3-6-pro` rejected with a validation error | Needs `livekit-agents`/`livekit-plugins-assemblyai` **1.8.0+** (LiveKit Inference `stt="assemblyai/universal-3-6-pro"` needs **1.8.3+**). The Python plugin's `model` default is `universal-3-6-pro` from 1.8.4 (earlier releases and the Node plugin default to `universal-3-5-pro`), so pass it explicitly |
 | Old API: `turn_detection="stt"` directly on `AgentSession` | Use `turn_handling=TurnHandlingOptions(turn_detection="stt", ...)` (livekit-agents v1.5+) |
 | `continuous_partials` defaults to **`true`** (both the API and the LiveKit plugin, as of June 2026) | ~1s partials during long turns. `continuous_partials=False` slows mid-turn partials to ~3s |
 | Want faster barge-in / TTFT | Lower `interruption_delay` (default `500` → 756ms effective); `interruption_delay=0` → 256ms effective first partial (the server adds a fixed 256ms) |
@@ -452,7 +453,7 @@ pip install "pipecat-ai[assemblyai,openai,cartesia]>=1.11"
 pip install "pipecat-ai[assemblyai,anthropic,elevenlabs]>=1.11"
 ```
 
-Configure the service with `settings=AssemblyAISTTService.Settings(...)`. The older `connection_params=AssemblyAIConnectionParams(...)` is **deprecated** (removed in Pipecat 2.0), and it can't carry newer fields like `mode`, `voice_focus`, `language_codes`, or `agent_context`. The plugin's `model` default is still `universal-3-5-pro`, so **pass `model="universal-3-6-pro"`**.
+Configure the service with `settings=AssemblyAISTTService.Settings(...)`. The older `connection_params=AssemblyAIConnectionParams(...)` is **deprecated** (removed in Pipecat 2.0), and it can't carry newer fields like `mode`, `voice_focus`, `language_codes`, or `agent_context`. The service's `model` default is still `universal-3-5-pro` (as of `pipecat-ai` 1.12), so **pass `model="universal-3-6-pro"`**.
 
 ### Turn Detection Modes
 
@@ -585,26 +586,52 @@ Both frameworks support updating parameters mid-session without reconnecting:
 
 ## Telephony Integration
 
+**Twilio is the Voice Agent API's telephony integration. Telnyx is not a Voice Agent API integration**: for Telnyx numbers, run AssemblyAI streaming STT inside LiveKit (a Telnyx SIP trunk into LiveKit rooms) or Pipecat (`TelnyxFrameSerializer` at 8 kHz). For any other carrier, check the current docs rather than assuming support either way.
+
 ### Twilio (first-party, via the Voice Agent API)
 
-Twilio connects directly to the Voice Agent API — no LiveKit/Pipecat needed. Your server bridges Twilio Media Streams ↔ the Voice Agent WebSocket. Because Twilio's native G.711 μ-law is byte-compatible with the `audio/pcmu` encoding, audio is forwarded **with zero transcoding**.
+Twilio connects directly to the Voice Agent API — no LiveKit/Pipecat needed. Two ways to wire it:
+
+- **SIP trunk:** point a Twilio SIP trunk at `sip:sip.assemblyai.com`.
+- **Media Streams bridge:** your server bridges Twilio Media Streams ↔ the Voice Agent WebSocket. Because Twilio's native G.711 μ-law is byte-compatible with the `audio/pcmu` encoding, audio is forwarded **with zero transcoding**.
+
+For the Media Streams bridge:
 
 - Set **both** `session.input.format` and `session.output.format` to `audio/pcmu` (G.711 μ-law, 8 kHz) to match Twilio's codec.
 - On an incoming call, Twilio hits your webhook; return TwiML with `<Connect><Stream>` pointed at your WebSocket endpoint.
 - Map each Twilio `media` event → `input.audio`; map each `reply.audio` event → a Twilio `media` action.
 - On barge-in (`input.speech.started`), send Twilio a `clear` action so the agent stops talking immediately.
 
-### Telnyx — Via LiveKit
-SIP trunking routes phone calls into LiveKit rooms. Configure inbound/outbound trunks and dispatch rules.
+### Telnyx — Via LiveKit (streaming STT, not the Voice Agent API)
+A Telnyx SIP trunk routes phone calls into LiveKit rooms, and the LiveKit agent uses `assemblyai.STT(...)` as above. Configure inbound/outbound trunks and dispatch rules.
 
-### Telnyx — Via Pipecat
-WebSocket media streaming with TeXML. **Critical: Telnyx uses 8kHz audio**, not 16kHz:
+### Telnyx — Via Pipecat (streaming STT, not the Voice Agent API)
+WebSocket media streaming with TeXML, using Pipecat's `FastAPIWebsocketTransport` with a `TelnyxFrameSerializer` (there is no `TelnyxTransport` class). **Critical: Telnyx uses 8kHz audio**, not 16kHz:
 
 ```python
-transport = TelnyxTransport(
-    # ...
-    audio_in_sample_rate=8000,
-    audio_out_sample_rate=8000,
+import os
+
+from pipecat.serializers.telnyx import TelnyxFrameSerializer
+from pipecat.transports.websocket.fastapi import (
+    FastAPIWebsocketParams,
+    FastAPIWebsocketTransport,
+)
+
+transport = FastAPIWebsocketTransport(
+    websocket=websocket,  # the FastAPI WebSocket Telnyx connected to
+    params=FastAPIWebsocketParams(
+        audio_in_enabled=True,
+        audio_out_enabled=True,
+        audio_in_sample_rate=8000,
+        audio_out_sample_rate=8000,
+        serializer=TelnyxFrameSerializer(
+            stream_id=stream_id,
+            inbound_encoding="PCMU",
+            outbound_encoding="PCMU",
+            call_control_id=call_control_id,  # needed for auto hang-up
+            api_key=os.getenv("TELNYX_API_KEY"),
+        ),
+    ),
 )
 ```
 
