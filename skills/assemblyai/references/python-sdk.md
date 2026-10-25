@@ -3,17 +3,21 @@
 ## Installation
 
 ```bash
-pip install "assemblyai>=1.6.1"
+pip install "assemblyai>=1.8.2"
 ```
 
-**1.6.1 is the latest release (Sept 24, 2026).** Install it, or `pip install -U assemblyai` for whatever is newest if you are reading this later. The matched JS/TS version is `assemblyai@^4.41.5` (Sept 24, 2026).
+**1.8.2 is the latest release (Oct 2026).** Install it, or `pip install -U assemblyai` for whatever is newest if you are reading this later. The matched JS/TS version is `assemblyai@^4.41.7` (with `4.42.0` previewing TTS).
 
-Anything below **1.5.2** has no `DictationTranscriber` — check `pip show assemblyai` before writing code against it in an existing project.
+Anything below **1.8.0** has no `TextToSpeech` or `TTSSession`, and anything below **1.5.2** has no `DictationTranscriber` — check `pip show assemblyai` before writing code against them in an existing project.
 
-What 1.1.0 → 1.6.1 added, newest first:
+What 1.1.0 → 1.8.2 added, newest first:
 
 | Version | Change |
 |---------|--------|
+| 1.8.2 | Text-to-Speech stream cancellation, shared connection pools, and cut stream billing notes |
+| 1.8.0 | **Text-to-Speech (TTS) API** (§13): `TextToSpeech`, `AsyncTextToSpeech`, `TTSSession`, `AsyncTTSSession`, `TTSConfig`, `TTSContainer`, `TTSEncoding`, `TTSError`, `settings.tts_base_url` |
+| 1.6.5 | Typed Speech Understanding `summarization` in `TranscriptionConfig` (`SummarizationRequest`, `SummarizationResponse`) |
+| 1.6.4 | Dictation `rewrite_mode` (`"fast"` / `"smart"`) in `DictationConfig` |
 | 1.6.1 | Streaming `speaker_labels_revision_interval_ms` (mid-session `SpeakerRevision` messages); `LLMGateway` / `AsyncLLMGateway` client module |
 | 1.5.4 | Speech Understanding configurable through `TranscriptionConfig` |
 | 1.5.2 | **Dictation API** (§12): `DictationTranscriber`, `AsyncDictationTranscriber`, `DictationConfig` (incl. `stt_prompt`), `DictationError`, `settings.dictation_base_url`; Sync STT streaming upload via `SyncTranscriber.transcribe_live()` / push-style `open_live()`; sync and dictation config caps raised to match the service |
@@ -62,6 +66,7 @@ Each product lives in a versioned subpackage. New code should import from it —
 | Pre-recorded / async | `from assemblyai.prerecorded.v2 import Transcriber, AsyncTranscriber, Transcript, TranscriptionConfig` |
 | Sync STT (≤120s) | `from assemblyai.sync.v1 import SyncTranscriber, AsyncSyncTranscriber, SyncTranscriptionConfig` |
 | Dictation (≤120s, transcript + rewrite; SDK ≥1.5.2) | `from assemblyai.dictation.v1 import DictationTranscriber, AsyncDictationTranscriber, DictationConfig, DictationError` |
+| Text-to-Speech (SDK ≥1.8.0) | `from assemblyai.tts.v1 import TextToSpeech, AsyncTextToSpeech, TTSSession, AsyncTTSSession, TTSConfig, TTSError` |
 | Streaming / realtime | `from assemblyai.streaming.v3 import RealTimeTranscriber, RealTimeTranscriberOptions, RealTimeParameters` |
 
 Cross-cutting names are **not** re-exported by the subpackages — import `TranscriptStatus`, `TranscriptError`, `Settings`, `Client`, `AsyncClient`, and the global `settings` from the top-level package. Mixing both styles in one file is normal and expected.
@@ -581,9 +586,87 @@ See `references/dictation.md` for the endpoint, config limits, error shapes, and
 
 ---
 
-## 13. Asyncio Support
+## 13. Text-to-Speech (TTS, SDK ≥1.8.0)
 
-Every product has an asyncio transcriber: `AsyncTranscriber` (`prerecorded.v2`), `AsyncSyncTranscriber` (`sync.v1`), `AsyncDictationTranscriber` (`dictation.v1`, ≥1.5.2), and `AsyncRealTimeTranscriber` (`streaming.v3`).
+AssemblyAI's Text-to-Speech API converts text into studio-quality audio with 16 in-house voices across US English, UK English, Spanish, German, French, Italian, and Portuguese.
+
+Requests route to `settings.tts_base_url` (`https://tts.us.assemblyai.com` by default; set `https://tts.eu.assemblyai.com` for EU data residency).
+
+### Buffered Synthesis (`synthesize`)
+
+Returns complete audio in `response.audio`:
+
+```python
+import assemblyai as aai
+
+aai.settings.api_key = "YOUR_API_KEY"
+
+tts = aai.TextToSpeech()
+
+# Generate a WAV file with Jane
+config = aai.TTSConfig(
+    voice_id="aai-jane",
+    container=aai.TTSContainer.wav,
+    sample_rate=24000,
+)
+response = tts.synthesize("Hello from AssemblyAI Text-to-Speech!", config=config)
+
+with open("/path/to/local/recording.wav", "wb") as f:
+    f.write(response.audio)
+```
+
+### Streamed Synthesis (`stream`)
+
+Streams audio chunks in real-time as the server produces them:
+
+```python
+import assemblyai as aai
+
+aai.settings.api_key = "YOUR_API_KEY"
+
+tts = aai.TextToSpeech()
+
+config = aai.TTSConfig(
+    voice_id="aai-michael",
+    encoding=aai.TTSEncoding.pcm_mulaw,
+    sample_rate=8000,
+)
+
+with tts.stream("Streaming text directly to audio output.", config=config) as stream:
+    for chunk in stream:
+        pass
+```
+
+### WebSocket Session (`TTSSession`)
+
+Persistent full-duplex session for voice agents and pipelined LLM token generation:
+
+```python
+import assemblyai as aai
+
+aai.settings.api_key = "YOUR_API_KEY"
+
+session = aai.TTSSession(config=aai.TTSConfig(voice_id="aai-alba"))
+session.connect()
+
+# Stream text in chunks, then flush
+session.generate("Streaming text ")
+session.generate("token by token from an LLM.")
+session.flush()
+
+for chunk in session.audio():
+    pass
+
+session.close()
+```
+
+See `references/text-to-speech.md` for full voice lists, temporary token minting, error codes, and options.
+
+---
+
+## 14. Asyncio Support
+
+Every product has an asyncio transcriber or client: `AsyncTranscriber` (`prerecorded.v2`), `AsyncSyncTranscriber` (`sync.v1`), `AsyncDictationTranscriber` (`dictation.v1`, ≥1.5.2), `AsyncTextToSpeech` / `AsyncTTSSession` (`tts.v1`, ≥1.8.0), and `AsyncRealTimeTranscriber` (`streaming.v3`).
 
 The async HTTP transcribers hold a connection pool, so use them as async context managers and the pool is always released:
 
@@ -609,7 +692,7 @@ asyncio.run(main())
 
 ---
 
-## 14. Migrating from 0.x to 1.x
+## 15. Migrating from 0.x to 1.x
 
 Most 0.x code runs on 1.x unchanged. No method signature was narrowed, every argument that worked in 0.x still works, and the new ones are optional keywords. Four things actually break:
 

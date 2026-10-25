@@ -657,3 +657,34 @@ A REST API (base URL `https://agents.assemblyai.com`, same auth) to subscribe UR
 
 - **Events:** `session.started`, `session.completed`, `call.connected`, `call.ended`, `call.failed`.
 - **Body fields:** `url` (`https` + public host, required), `events` (array, required), `secret` (32–256 printable ASCII chars, no whitespace — signing secret, **write-only**, only its `secret_version` is returned), `agent_id` (optional; omit for account-wide).
+
+## 20. Text-to-Speech API (Speech Synthesis)
+
+A dedicated REST and WebSocket service converting text into audio with 16 studio-quality voices.
+
+| Endpoint | Host | Notes |
+|----------|------|-------|
+| `POST /v1/speech` | `https://tts.us.assemblyai.com` (US) / `https://tts.eu.assemblyai.com` (EU) | Buffered (`"stream": false`) or chunked HTTP streaming (`"stream": true`) |
+| `WSS /v1/ws` | `wss://tts.us.assemblyai.com/v1/ws` (US) / `wss://tts.eu.assemblyai.com/v1/ws` (EU) | Full-duplex WebSocket session |
+
+### Synthesize speech (`POST /v1/speech`)
+
+```bash
+curl -X POST https://tts.us.assemblyai.com/v1/speech \
+  -H "Authorization: YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "Hello from AssemblyAI Text-to-Speech.",
+    "voice_id": "aai-jane",
+    "stream": false,
+    "container": "wav",
+    "sample_rate": 24000
+  }' \
+  --output sample.wav
+```
+
+- **Headers:** `Authorization: YOUR_API_KEY` (raw key, no Bearer prefix).
+- **Body fields:** `text` (string, required), `voice_id` (string, default `"aai-jane"`), `stream` (boolean, default `true`), `encoding` (`"pcm_s16le"`, `"pcm_mulaw"`, `"pcm_alaw"`, `"mp3"`), `container` (`"raw"`, `"wav"`), `sample_rate` (`8000`, `16000`, `22050`, `24000`, `44100`, `48000`), `bit_rate` (MP3 only: `32000`, `48000`, `64000`, `96000`, `128000`), `language` (`english`, `spanish`, `german`, `french`, `italian`, `portuguese`).
+- **Response metadata:** Returned in `X-TTS-*` headers: `X-Request-Id`, `X-TTS-Region`, `X-TTS-Model`, `X-TTS-Voice-Id`, `X-TTS-Language`, `X-TTS-Encoding`, `X-TTS-Sample-Rate`, `X-TTS-Container`, `X-TTS-Billed-Characters`, `X-TTS-Audio-Duration-Ms`.
+- See `references/text-to-speech.md` for full voice lists, WebSocket protocol details, token minting, and error handling.
+
