@@ -102,17 +102,6 @@ transcript_text = "Speaker A: Welcome to the meeting. Speaker B: Thanks for join
 def execute_tool(name, arguments):
     return json.dumps({{"tool": name, "arguments": arguments, "ok": True}})
 
-def run_tool(name, arguments):
-    return {{"tool": name, "arguments": arguments, "ok": True}}
-
-class _CodeBlockWebSocket:
-    async def send(self, payload):
-        return None
-
-ws = _CodeBlockWebSocket()
-event = {{"type": "reply.done", "name": "get_weather", "arguments": {{}}, "call_id": "call_test", "status": "completed"}}
-t = event["type"]
-
 try:
     import assemblyai as aai
 except ImportError:

@@ -2,7 +2,7 @@
 
 AssemblyAI's Text-to-Speech (TTS) API converts text into ultra-realistic speech with low latency. It supports both **buffered and streamed HTTP synthesis** for single texts, and a **full-duplex WebSocket session** for streaming conversational audio in real-time voice applications.
 
-TTS is a **separate service** from Speech-to-Text (STT) and Voice Agents, with its own dedicated endpoints and hostnames (`tts.us.assemblyai.com` and `tts.eu.assemblyai.com`). Its voices are not the Voice Agent API's `voice` names (`juergen`, `lola`, …): TTS takes a library slug in `voice_id`, such as `aai-jane`. Even where a name matches (Voice Agent `rafael` is Portuguese, TTS `aai-rafael` is Spanish), they are different voices.
+TTS is a **separate service** from Speech-to-Text (STT), with its own dedicated endpoints and hostnames (`tts.us.assemblyai.com` and `tts.eu.assemblyai.com`). Voices are named by a library slug in `voice_id`, such as `aai-jane`.
 
 ---
 
@@ -84,7 +84,7 @@ Eleven AssemblyAI voices are built into the model: `aai-jane` (default), `aai-al
 
 ### Voice Catalog
 
-Beyond the built-ins, the voice catalog has library voices named by the same `aai-` slug pattern, such as `aai-sara` and `aai-kyla` (American English), `aai-lola` (British English), `aai-giovanni` (Italian), `aai-rafael` (Spanish) and `aai-estelle` (French). Browse them, with descriptions and samples, in the dashboard's Voice Library, or list them with `GET https://tts.us.assemblyai.com/v1/voices?scope=public` (same `Authorization` header). Without `scope`, the listing returns only your own cloned voices (`scope=owned`). The public catalog has thousands of voices, so the response is paginated: `{voices, has_more, next_cursor, total_count}`; pass `cursor=<next_cursor>` while `has_more` is true. Each entry has `slug`, `name`, `language`, `description` and `tags`. This is the TTS host, not the Voice Agent API's `agents.assemblyai.com/v1/voices`. A catalog voice speaks its own language unless `language` is set. Do not guess slugs: an unknown one is refused with `voice_not_found`.
+Beyond the built-ins, the voice catalog has library voices named by the same `aai-` slug pattern, such as `aai-sara` and `aai-kyla` (American English), `aai-lola` (British English), `aai-giovanni` (Italian), `aai-rafael` (Spanish) and `aai-estelle` (French). Browse them, with descriptions and samples, in the dashboard's Voice Library, or list them with `GET https://tts.us.assemblyai.com/v1/voices?scope=public` (same `Authorization` header). Without `scope`, the listing returns only your own cloned voices (`scope=owned`). The public catalog has thousands of voices, so the response is paginated: `{voices, has_more, next_cursor, total_count}`; pass `cursor=<next_cursor>` while `has_more` is true. Each entry has `slug`, `name`, `language`, `description` and `tags`. A catalog voice speaks its own language unless `language` is set. Do not guess slugs: an unknown one is refused with `voice_not_found`.
 
 ### Cloned Voices
 
@@ -395,7 +395,7 @@ A streamed response cut after its first audio raises `TTSError` with `status_cod
 | Mistake | What Happens | Fix |
 |---------|--------------|-----|
 | Using `voice: "aai-jane"` | `422 invalid_parameter` (HTTP), close `3006` (WebSocket), validation error in `TTSConfig` | Use `voice_id="aai-jane"` (or `TTSConfig(voice_id=...)`) |
-| Using Voice Agent voice names (`juergen`, `jane`) as `voice_id` | `voice_not_found` | Use a TTS library slug such as `aai-jane`; Voice Agent `voice` names are a different list |
+| Using a bare voice name (`jane`) as `voice_id` | `voice_not_found` | Use the library slug, `aai-jane` |
 | Calling `https://api.assemblyai.com` for TTS | `404 Not Found` | Use the dedicated TTS host: `https://tts.us.assemblyai.com` |
 | Using a cloned voice on the other zone's host | `voice_not_found` | Call the host of the zone the voice was created in |
 | Setting `container="wav"` with `encoding="mp3"` | Rejected with validation error | WAV container is only supported for PCM and G.711 codecs |
