@@ -602,9 +602,9 @@ aai.settings.api_key = "YOUR_API_KEY"
 
 tts = aai.TextToSpeech()
 
-# Generate a WAV file with Jane
+# Generate a WAV file with Kyla, the recommended voice
 config = aai.TTSConfig(
-    voice_id="aai-jane",
+    voice_id="aai-kyla",
     container=aai.TTSContainer.wav,
     sample_rate=24000,
 )

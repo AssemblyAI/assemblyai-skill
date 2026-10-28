@@ -23,7 +23,7 @@ There is no global TTS host: the host picks the zone, and no parameter does.
 
 - **Streamed synthesis** (`"stream": true`, the default): Returns chunked audio as the model generates it, allowing playback to begin long before synthesis ends.
 - **Buffered synthesis** (`"stream": false`): Returns the complete audio in the response body, with metadata in `X-TTS-*` response headers.
-- **Word timings**: `POST /v1/speech/events` returns the audio and its word boundaries as server-sent events (PCM/G.711 only).
+- **Word timings**: `POST /v1/speech/events` returns the audio and its word boundaries as server-sent events. Its body differs from `/v1/speech`; see [Word Timings](#word-timings-post-v1speechevents).
 
 ### WebSocket API (Real-Time Bidirectional Session)
 
@@ -76,7 +76,7 @@ curl "https://token.assemblyai.com/v1/token?product=tts&expires_in_seconds=60" \
 
 ## Voices
 
-Name every voice with `voice_id`. Leaving it out gives the default voice, `aai-jane`.
+Name every voice with `voice_id`. **Use `aai-kyla` as the recommended voice** (American English, from the voice catalog; the dashboard's default). Leaving `voice_id` out gives the API's default voice, `aai-jane`.
 
 ### Built-in Voices
 
@@ -88,7 +88,7 @@ Beyond the built-ins, the voice catalog has library voices named by the same `aa
 
 ### Cloned Voices
 
-Cloned voices are created in the AssemblyAI dashboard and named by their ID (a UUID) or slug in `voice_id`. A cloned voice belongs to the data zone it was created in and works **only on that zone's host**. On the other host it is refused with `voice_not_found`. Cloned voices expire 60 days after biometric consent was last given; the owner renews it with `extend_biometric_consent: true`.
+Cloned voices are created in the AssemblyAI dashboard and named by their ID (a UUID) or slug in `voice_id`. A cloned voice belongs to the data zone it was created in and works **only on that zone's host**. On the other host it is refused with `voice_not_found`. Cloned voices expire 60 days after they were created or their biometric consent was last renewed. Only **before** expiry can the owner renew it, by sending `extend_biometric_consent: true` with the voice. An expired voice cannot be renewed (`voice_expired`): create it again from a new consented recording, which gives it a new ID. Delete one of your voices with `DELETE /v1/voices/{voice_id}` on its zone's TTS host (API key; returns `204`).
 
 ### Languages
 
@@ -118,6 +118,15 @@ Send a JSON object with the following fields:
 | `speed` | number | none | Only `1` is accepted: there is no speed control. |
 
 Unknown fields are ignored and listed in `X-TTS-Unknown-Params`, so check it for typos. A body field sent in the query string is refused.
+
+### Word Timings (`POST /v1/speech/events`)
+
+Takes the `/v1/speech` body with these differences, and answers `text/event-stream` with the audio and its word boundaries:
+
+- `word_boundaries` defaults to `true`; `false` turns them off.
+- `encoding` is `pcm_s16le`, `pcm_mulaw` or `pcm_alaw`: no `mp3`.
+- `container` is `raw` only.
+- `bit_rate` and `"stream": false` are refused (`422`).
 
 ### Output Format
 
@@ -157,7 +166,7 @@ The socket opens before the server checks the credential and parameters: a faile
 | `type` | Effect |
 |--------|--------|
 | `Generate` | `{"type": "Generate", "text": "..."}` appends text to the current request. Texts are joined exactly as sent, so include the spaces. At most 2,000 characters per frame. |
-| `Flush` | Concludes the current request: everything sent is spoken, then one `FlushDone` arrives, even with no text. Short text gets no audio until its `Flush`. |
+| `Flush` | Concludes the current request: everything sent is spoken, then one `FlushDone` arrives, even with no text. Short text gets no audio until its `Flush` (or the `Terminate` that ends the session, which flushes what is left). |
 | `Cancel` | Barge-in: stops the request in flight and drops queued requests and unflushed text. The server answers `Cancelled`, and the session stays open for the next request. |
 | `KeepAlive` | Restarts the inactivity timeout. |
 | `Terminate` | Ends the session cleanly; the server answers `Termination` and closes `1000`. |
@@ -174,7 +183,57 @@ The socket opens before the server checks the credential and parameters: a faile
 | `Termination` | `session_duration_seconds`, `total_input_char_length`, `audio_duration_seconds`, `voice_expires_at` |
 | `Error` | `error_code`, `error`, `error_type`, `retryable`, `param`, `retry_after_seconds` |
 
-**Close codes**: `1000` clean end; `1008` credential refused; `3005` server-side failure (retryable); `3006` bad input (parameter, frame, voice or language) and the inactivity timeout; `3008` session reached `expires_at`; `3009` too many new sessions this minute; `3010` input sent too fast; `3011` audio not read fast enough; `3012` voice not found, expired or blocked; `3014` cloned voice not paired with the model. Every failure close is preceded by an `Error` frame: branch on its `error_type` and `retryable`.
+**Close codes**:
+
+- `1000`: clean end after `Terminate`.
+- `1008`: credential refused.
+- `1011`: the credential or the account's biometric terms could not be checked (`auth_unavailable`, retryable), or a ping went unanswered.
+- `1012`: the server is restarting (`service_restart`, retryable).
+- `3005`: server-side failure (retryable).
+- `3006`: bad input (parameter, frame, voice or language), and the inactivity timeout.
+- `3008`: the session reached `expires_at`.
+- `3009`: too many new sessions this minute.
+- `3010`: input sent too fast.
+- `3011`: audio not read fast enough.
+- `3012`: voice not found, expired or blocked.
+- `3014`: cloned voice not paired with the model, or `model_id` names a retired model (`model_retired`).
+
+Every close the server initiates is preceded by an `Error` frame: branch on its `error_type` and `retryable`. Closes from the WebSocket layer carry none: `1009` (message over 1 MiB), the keepalive `1011`, `1002` (protocol error), `1006` (connection dropped) and `1007` (text not UTF-8). Retry `1011`, `1012`, `3005` and `3009` with exponential backoff, waiting at least `retry_after_seconds` when set.
+
+### Limits
+
+Defaults that may change; a session reports its own in `Begin.configuration.limits`.
+
+| Limit | WebSocket | HTTP |
+|-------|-----------|------|
+| Text | 2,000 characters per `Generate` | 5,000 characters per request |
+| Duration | 3,600 s per session (`Begin.expires_at`; a temporary token can shorten it), then `3008` | 600 s per request |
+| Idle | 120 s without a frame either way, then `3006` (send `KeepAlive`) | — |
+| Text pacing | About 100 characters/s sustained after the first 1,500; at most 8,000 characters sent but not yet synthesized, else `3010` | — |
+| Control frames | 20 per second sustained, else `3010` | — |
+| Rate | New sessions per minute: 5 on a free plan, 100 or more on a paid plan (grows with use), else `3009` | Requests per minute: 50 free, 1,000 or more paid |
+
+The US and EU hosts count separately. Keep one socket open for many requests rather than one per utterance: every connection counts as a new session start, reconnects included.
+
+---
+
+## OpenAI-Compatible Route
+
+`POST /v1/openai/audio/speech` takes OpenAI's create-speech request, so OpenAI SDKs and tools built on them work by setting the base URL to `https://tts.us.assemblyai.com/v1/openai` (or the EU host) with your AssemblyAI API key:
+
+```bash
+curl https://tts.us.assemblyai.com/v1/openai/audio/speech \
+  -H "Authorization: YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"model": "assemblyai-tts-en", "voice": "aai-kyla", "input": "Hello from AssemblyAI.", "response_format": "wav"}' \
+  --output hello.wav
+```
+
+- `model`: `assemblyai-tts-<code>` (`en`, `es`, `de`, `it`, `pt`, `fr`) picks the language's default model and the language.
+- `voice`: an AssemblyAI slug (`aai-kyla`), a voice ID, or an OpenAI voice name, which maps to a built-in voice (`alloy` → `aai-jane`, `nova` → `aai-eve`, `shimmer` → `aai-alba`, …).
+- `response_format`: `mp3` (default), `pcm`, `wav`, `mulaw` or `alaw`. `speed` must be `1`.
+
+For LiveKit or Pipecat voice agents, start from the reference agents in `references/voice-agents.md`, which use AssemblyAI text-to-speech.
 
 ---
 
@@ -193,9 +252,9 @@ aai.settings.api_key = "YOUR_API_KEY"
 
 tts = aai.TextToSpeech()
 
-# Generate a WAV file with Jane
+# Generate a WAV file with Kyla, the recommended voice
 config = aai.TTSConfig(
-    voice_id="aai-jane",
+    voice_id="aai-kyla",
     container=aai.TTSContainer.wav,
     sample_rate=24000,
 )
@@ -264,7 +323,7 @@ def user_started_speaking() -> bool:
 
 audio = bytearray()
 
-with aai.TTSSession(config=aai.TTSConfig(voice_id="aai-jane")) as session:
+with aai.TTSSession(config=aai.TTSConfig(voice_id="aai-kyla")) as session:
     # Stream text in chunks as the LLM generates them; include the spaces
     for token in ["I can help ", "you find ", "your order details."]:
         session.generate(token)
@@ -309,7 +368,7 @@ const client = new AssemblyAI({
 // 1. Buffered synthesis (request fields are snake_case)
 const response = await client.tts.synthesize({
   text: "Hello from the Node.js SDK!",
-  voice_id: "aai-jane",
+  voice_id: "aai-kyla",
   container: "wav"
 });
 // response.audio is a Uint8Array
@@ -402,7 +461,7 @@ A streamed response cut after its first audio raises `TTSError` with `status_cod
 | Saving the default output as `.wav` | File has no header and won't play | Default is raw PCM; set `container="wav"` or save as `.pcm` |
 | Putting private API key in frontend app | Security risk | Mint a temporary token with `GET https://token.assemblyai.com/v1/token?product=tts&expires_in_seconds=60` |
 | Minting a token with `POST` and a JSON body, or without `product=tts` | Refused (`422` when a query parameter is missing) | `GET` with `product=tts` and `expires_in_seconds` in the query string |
-| Forgetting to call `session.flush()` after `session.generate(...)` | Short text is never spoken; no `FlushDone` | Call `session.flush()` when a reply's text is complete |
+| Forgetting to call `session.flush()` after `session.generate(...)` | Short text is not spoken until the session ends (`Terminate`, sent when the `with` block exits, flushes it), so the reply arrives late | Call `session.flush()` as soon as a reply's text is complete |
 | `session.audio()` with no `flush_id` after `flush()` | Hangs until the session ends | `session.audio(session.flush())`, or `session.speak(text)` |
 | One `Generate` over 2,000 characters | Close `3006` | Split the text across `Generate` frames |
 | Trying to ingest URLs | TTS takes text in, returns speech out | Provide the text string in the `text` parameter |

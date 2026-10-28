@@ -598,7 +598,7 @@ curl -X POST https://tts.us.assemblyai.com/v1/speech \
   -H "Content-Type: application/json" \
   -d '{
     "text": "Hello from AssemblyAI Text-to-Speech.",
-    "voice_id": "aai-jane",
+    "voice_id": "aai-kyla",
     "stream": false,
     "container": "wav",
     "sample_rate": 24000

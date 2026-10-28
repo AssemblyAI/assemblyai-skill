@@ -284,7 +284,7 @@ See `references/voice-agents.md` for setup code, and start from the reference ag
 | TTS `voice: "aai-jane"` | Rejected with validation error — name the voice with `voice_id` (e.g. `voice_id="aai-jane"` or `TTSConfig(voice_id=...)`) |
 | Calling `https://api.assemblyai.com` for TTS | 404 — TTS runs on dedicated endpoints: `https://tts.us.assemblyai.com` and `https://tts.eu.assemblyai.com` |
 | Setting `container="wav"` with `encoding="mp3"` | Rejected with validation error — WAV container only applies to PCM and G.711 codecs |
-| Omitting `session.flush()` in TTS WebSocket | Audio generation does not complete — always call `session.flush()` after queueing `session.generate(...)` turns |
+| Omitting `session.flush()` in TTS WebSocket | Short text isn't spoken until the session ends (`Terminate` flushes it), so the reply arrives late — call `session.flush()` as soon as each reply's text is complete |
 | TTS `session.audio()` with no id after `session.flush()` | Hangs: with no id it reads the request still being written. Pass the id `flush()` returns: `session.audio(session.flush())` |
 | Using a bare voice name (`jane`) as a TTS `voice_id` | `voice_not_found` — TTS takes the library slug, `aai-jane` |
 | Minting a TTS token with `POST` | Use `GET https://token.assemblyai.com/v1/token?product=tts&expires_in_seconds=60`; both query parameters are required |
@@ -295,7 +295,7 @@ Read the relevant reference file based on what the user needs:
 
 | File | When to read |
 |------|-------------|
-| `references/text-to-speech.md` | Text-to-Speech API: REST `/v1/speech` and WebSocket `/v1/ws`, 11 built-in voices plus the voice catalog, six languages, cloned voices by zone, Python (`TextToSpeech`, `TTSSession`)/Node SDK surface, barge-in, token minting |
+| `references/text-to-speech.md` | Text-to-Speech API: REST `/v1/speech` and WebSocket `/v1/ws`, recommended voice `aai-kyla`, 11 built-in voices plus the voice catalog, six languages, cloned voices by zone, limits and close codes, OpenAI-compatible route, Python (`TextToSpeech`, `TTSSession`)/Node SDK surface, barge-in, token minting |
 | `references/python-sdk.md` | Python SDK patterns and examples |
 | `references/js-sdk.md` | JavaScript/TypeScript SDK patterns |
 | `references/streaming.md` | Real-time/streaming STT: Universal-3.6 Pro (32 languages, `mode` presets, turn detection), v3 protocol and messages, `UpdateConfiguration`, diarization and `SpeakerRevision`, context carryover, voice focus, temp tokens, error codes |
