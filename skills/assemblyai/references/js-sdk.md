@@ -471,8 +471,10 @@ await session.close(); // Sends Terminate and waits for the summary
 ```
 
 - Read a flushed request with `session.audio(flushId)`, using the id `flush()` returned. `audio()` with no id is the request still being written, so after `flush()` it waits for a request that never comes. `session.speak(text)` does `generate()`, `flush()` and `audio()` in one call.
+- Audio chunks are `Uint8Array` (raw 16-bit PCM at 24 kHz unless the session sets `sampleRate` or `encoding`). Session params: `voiceId`, `language`, `sampleRate`, `encoding` (`pcm_s16le`, `pcm_mulaw`, `pcm_alaw`), `wordBoundaries`, `inactivityTimeout`.
+- `flush()` and `cancel()` are synchronous and return the request's id; `cancel()` is the barge-in, and the session stays open for the next reply. Between replies further apart than the 120 s idle timeout, call `session.keepAlive()`.
 - `client.tts.stream({...})` returns the audio as it is generated (`for await (const chunk of stream)`).
 - In a browser, mint a token on your server with `await client.tts.createTemporaryToken({ expires_in_seconds: 60 })` and open the session with it; never ship the API key.
-- Failures throw `TextToSpeechError` (`errorCode`, `status`, `param`, `retryable`, `retryAfter`, `requestId`, `closeCode`, `body`).
+- Failures throw `TextToSpeechError` (`errorCode`, `status`, `param`, `retryable`, `retryAfter`, `requestId`, `closeCode`, `body`); `import { TextToSpeechError } from "assemblyai"` for `instanceof` checks.
 
 See `references/text-to-speech.md` for voices, parameters, the WebSocket protocol, limits and error codes.
