@@ -72,7 +72,7 @@
         {"text": "Does NOT install assemblyai[extras] — the extra was removed in Python SDK 1.0.0", "type": "semantic"},
         {"text": "Captures microphone PCM itself (pyaudio, sounddevice, or equivalent) and passes 16-bit PCM chunks to the transcriber's stream() method", "type": "semantic"},
         {"text": "Sets speech_model to universal-3-6-pro and passes sample_rate explicitly (required for PCM)", "type": "semantic"},
-        {"text": "If it pins a version, pins the current assemblyai>=1.6.1 (or at minimum >=1.1.0, the first release whose enum accepts universal-3-6-pro) rather than a 0.64.x or 1.0.0 release", "type": "semantic"}
+        {"text": "If it pins a version, pins the current assemblyai>=1.8.2 (or at minimum >=1.1.0, the first release whose enum accepts universal-3-6-pro) rather than a 0.64.x or 1.0.0 release", "type": "semantic"}
       ]
     },
     {
@@ -90,7 +90,7 @@
         {"text": "Stores/keeps `text` as the verbatim transcript and uses `llm_response` (or final_text) for display, falling back to `text` when llm_response is null / llm_error is set — does not treat a rewrite failure as a request failure", "type": "semantic"},
         {"text": "Sends WAV or raw 16-bit PCM audio (with sample_rate and channels in config for PCM) and does not send MP3/M4A/WebM", "type": "semantic"},
         {"text": "Does not pass unsupported fields (model, timestamps, conversation_context, speaker_labels, redact_pii) in the dictation config", "type": "semantic"},
-        {"text": "If it uses the SDK, pins assemblyai>=1.6.1 (DictationTranscriber landed in 1.5.2) or otherwise falls back to raw HTTP", "type": "semantic"}
+        {"text": "If it uses the SDK, pins assemblyai>=1.8.2 (DictationTranscriber landed in 1.5.2) or otherwise falls back to raw HTTP", "type": "semantic"}
       ]
     },
     {
@@ -106,7 +106,53 @@
         {"text": "Updates the silence threshold mid-stream via updateConfiguration with snake_case keys (e.g. { min_turn_silence: 1000 }) or a raw UpdateConfiguration message, not by reconnecting and not with camelCase minTurnSilence", "type": "semantic"},
         {"text": "Passes sampleRate 16000 for PCM", "type": "semantic"},
         {"text": "Does not pass format_turns or end_of_turn_confidence_threshold as if they affected Universal-3.6 Pro", "type": "semantic"},
-        {"text": "If it pins the SDK, pins assemblyai 4.37.1 or newer (ideally the current ^4.41.5)", "type": "semantic"}
+        {"text": "If it pins the SDK, pins assemblyai 4.37.1 or newer (ideally the current ^4.42.0)", "type": "semantic"}
+      ]
+    },
+    {
+      "id": 8,
+      "eval_name": "tts-python-wav-file",
+      "prompt": "Write a Python script that turns a paragraph from paragraph.txt into a WAV file I can open in any audio player, using AssemblyAI text-to-speech with the recommended voice.",
+      "expected_output": "A Python script using aai.TextToSpeech().synthesize() (assemblyai>=1.8.2) with TTSConfig(voice_id=\"aai-kyla\", container=wav), writing response.audio to a .wav file, or a raw POST to https://tts.us.assemblyai.com/v1/speech with voice_id and container \"wav\".",
+      "files": [],
+      "assertions": [
+        {"text": "Names the voice with voice_id (e.g. voice_id=\"aai-kyla\"), not voice and not a bare name like \"kyla\"", "type": "semantic"},
+        {"text": "Uses the recommended voice aai-kyla", "type": "semantic"},
+        {"text": "Asks for a WAV container (container=\"wav\" / TTSContainer.wav), or otherwise adds a WAV header; does not save the default raw PCM output under a .wav name", "type": "semantic"},
+        {"text": "Calls the TTS host (tts.us.assemblyai.com or tts.eu.assemblyai.com, or the SDK default), not api.assemblyai.com", "type": "semantic"},
+        {"text": "Auth uses the raw API key (no Bearer prefix)", "type": "semantic"},
+        {"text": "If it pins the SDK, pins assemblyai>=1.8.2 (the first release with TextToSpeech)", "type": "semantic"},
+        {"text": "Handles errors with TTSError (or the HTTP status and error body); does not read e.message", "type": "semantic"}
+      ]
+    },
+    {
+      "id": 9,
+      "eval_name": "tts-python-llm-stream-barge-in",
+      "prompt": "I'm building a voice agent in Python. My LLM streams its reply as text tokens. Pipe the tokens into AssemblyAI text-to-speech over the WebSocket as they arrive, collect the audio for the reply, and stop the reply immediately if the user starts talking.",
+      "expected_output": "A Python TTSSession (opened with `with`) that sends tokens with generate(), concludes the reply with flush() and reads that reply's audio with audio(flush_id), calling cancel() on barge-in.",
+      "files": [],
+      "assertions": [
+        {"text": "Uses aai.TTSSession (or AsyncTTSSession), opened with `with` / `async with` or connect() plus terminate()", "type": "semantic"},
+        {"text": "Sends tokens with session.generate() as they arrive, keeping the spaces in the text (texts are joined exactly as sent)", "type": "semantic"},
+        {"text": "Calls session.flush() when the reply's text is complete", "type": "semantic"},
+        {"text": "Reads the reply's audio with session.audio(flush_id), using the id flush() returned. Does NOT call session.audio() with no id after flush(), which waits for a request that never comes", "type": "semantic"},
+        {"text": "Calls session.cancel() on barge-in, and keeps the session open for the next reply", "type": "semantic"},
+        {"text": "Names the voice with voice_id in TTSConfig, not voice", "type": "semantic"}
+      ]
+    },
+    {
+      "id": 10,
+      "eval_name": "tts-browser-temp-token",
+      "prompt": "I have a Node/Express backend and a browser page. The browser should speak text in real time over AssemblyAI's text-to-speech WebSocket without ever seeing my API key. Give me the Express endpoint and the browser code.",
+      "expected_output": "An Express endpoint that mints a temporary token with GET https://token.assemblyai.com/v1/token?product=tts&expires_in_seconds=N (or client.tts.createTemporaryToken()), and browser code that opens wss://tts.us.assemblyai.com/v1/ws?token=... and sends Generate then Flush frames, decoding base64 Audio frames.",
+      "files": [],
+      "assertions": [
+        {"text": "Mints the token with GET and the query parameters product=tts and expires_in_seconds (or client.tts.createTemporaryToken()), not POST with a JSON body", "type": "semantic"},
+        {"text": "Sends only the temporary token to the browser, never the API key", "type": "semantic"},
+        {"text": "The browser passes the token as the token query parameter of wss://tts.us.assemblyai.com/v1/ws (or the EU host)", "type": "semantic"},
+        {"text": "Names the voice with the voice_id query parameter, not voice", "type": "semantic"},
+        {"text": "Sends JSON Generate frames, then a Flush frame, and decodes the base64 audio field of Audio frames", "type": "semantic"},
+        {"text": "Mints a new token for every connection", "type": "semantic"}
       ]
     }
   ]

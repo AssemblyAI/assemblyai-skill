@@ -341,16 +341,23 @@ Audio chunks are `bytes`. The session reads frames on its own thread, so `genera
 ### 5. Async Support (`AsyncTextToSpeech`, `AsyncTTSSession`)
 
 ```python
+import asyncio
+
 import assemblyai as aai
 
 aai.settings.api_key = "YOUR_API_KEY"
 
-async with aai.AsyncTextToSpeech() as async_tts:
-    response = await async_tts.synthesize("Synthesized asynchronously.")
 
-async with aai.AsyncTTSSession(config=aai.TTSConfig(voice_id="aai-paul")) as async_session:
-    async for chunk in async_session.speak("Speaking over async WebSocket."):
-        pass
+async def main():
+    async with aai.AsyncTextToSpeech() as async_tts:
+        response = await async_tts.synthesize("Synthesized asynchronously.")
+
+    async with aai.AsyncTTSSession(config=aai.TTSConfig(voice_id="aai-kyla")) as async_session:
+        async for chunk in async_session.speak("Speaking over async WebSocket."):
+            pass
+
+
+asyncio.run(main())
 ```
 
 ---
