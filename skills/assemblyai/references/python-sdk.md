@@ -65,7 +65,7 @@ Each product lives in a versioned subpackage. New code should import from it —
 | Pre-recorded / async | `from assemblyai.prerecorded.v2 import Transcriber, AsyncTranscriber, Transcript, TranscriptionConfig` |
 | Sync STT (≤120s) | `from assemblyai.sync.v1 import SyncTranscriber, AsyncSyncTranscriber, SyncTranscriptionConfig` |
 | Dictation (≤120s, transcript + rewrite; SDK ≥1.5.2) | `from assemblyai.dictation.v1 import DictationTranscriber, AsyncDictationTranscriber, DictationConfig, DictationError` |
-| Text-to-Speech (SDK ≥1.8.2) | `from assemblyai.tts.v1 import TextToSpeech, AsyncTextToSpeech, TTSSession, AsyncTTSSession, TTSConfig, TTSError` |
+| Text-to-Speech (SDK ≥1.8.2) | `from assemblyai.tts.v1 import TextToSpeech, AsyncTextToSpeech, TTSSession, AsyncTTSSession, TTSConfig, TTSContainer, TTSEncoding, TTSError` |
 | Streaming / realtime | `from assemblyai.streaming.v3 import RealTimeTranscriber, RealTimeTranscriberOptions, RealTimeParameters` |
 
 Cross-cutting names are **not** re-exported by the subpackages — import `TranscriptStatus`, `TranscriptError`, `Settings`, `Client`, `AsyncClient`, and the global `settings` from the top-level package. Mixing both styles in one file is normal and expected.

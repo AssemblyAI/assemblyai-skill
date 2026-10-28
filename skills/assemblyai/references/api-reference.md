@@ -683,7 +683,7 @@ curl -X POST https://tts.us.assemblyai.com/v1/speech \
   --output sample.wav
 ```
 
-- **Headers:** `Authorization: YOUR_API_KEY` (raw key or `Bearer YOUR_API_KEY`). Browser clients mint a temporary token with `GET https://token.assemblyai.com/v1/token?product=tts&expires_in_seconds=60` and pass it to the WebSocket as `?token=`.
+- **Headers:** `Authorization: YOUR_API_KEY` (raw key). Browser clients mint a temporary token with `GET https://token.assemblyai.com/v1/token?product=tts&expires_in_seconds=60` and pass it to the WebSocket as `?token=`.
 - **Body fields:** `text` (string, required), `voice_id` (string, default `"aai-jane"`), `stream` (boolean, default `true`), `encoding` (`"pcm_s16le"`, `"pcm_mulaw"`, `"pcm_alaw"`, `"mp3"`), `container` (`"raw"`, `"wav"`), `sample_rate` (`8000`, `16000`, `22050`, `24000`, `44100`, `48000`), `bit_rate` (MP3 only: `32000`, `48000`, `64000`, `96000`, `128000`), `language` (`english`, `spanish`, `german`, `french`, `italian`, `portuguese`), `model_id`. `voice` is retired and refused (`422`). Default output is raw 16-bit PCM at 24 kHz with no header; set `container: "wav"` for a playable file.
 - **Response metadata:** Returned in `X-TTS-*` headers: `X-Request-Id`, `X-TTS-Region`, `X-TTS-Model`, `X-TTS-Voice-Id`, `X-TTS-Language`, `X-TTS-Encoding`, `X-TTS-Sample-Rate`, `X-TTS-Container`, `X-TTS-Billed-Characters`, `X-TTS-Audio-Duration-Ms` (buffered only), `X-TTS-Unknown-Params`.
 - See `references/text-to-speech.md` for full voice lists, WebSocket protocol details, token minting, and error handling.
