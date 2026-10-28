@@ -26,7 +26,8 @@ LLM training data contains outdated AssemblyAI patterns — deprecated LeMUR API
 | **LLM Gateway** | Chat completions, tool calling, agentic workflows, structured output caveats, full model list |
 | **Audio intelligence** | PII redaction, diarization, summarization, sentiment, entity detection, content safety, chapters |
 | **Speech understanding** | Translation, speaker identification, custom formatting |
-| **SDKs** | Current Python (`1.6.1`) and JS/TS (`4.41.5`) patterns, the 0.x→1.x Python migration, registry-lag caveats, Ruby status, discontinued SDK warnings |
+| **Text-to-Speech (TTS)** | Ultra-realistic speech synthesis (REST `/v1/speech` and real-time WebSocket `/v1/ws`), built-in and catalog voices, chunked audio streaming, token minting, Python (`assemblyai>=1.8.2`) & Node (`assemblyai@^4.42.0`) SDK surface |
+| **SDKs** | Current Python (`1.8.2`) and JS/TS (`4.42.0`) patterns, the 0.x→1.x Python migration, registry-lag caveats, Ruby status, discontinued SDK warnings |
 | **API reference** | Full parameter list, export endpoints, webhooks, custom spelling, multichannel, code switching |
 
 ## Installation

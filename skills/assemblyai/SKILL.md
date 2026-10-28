@@ -1,6 +1,6 @@
 ---
 name: assemblyai
-description: Use when implementing speech-to-text, audio transcription, real-time streaming STT, dictation (spoken notes turned into cleaned-up text), audio intelligence features, or voice AI using AssemblyAI APIs or SDKs. Use when user mentions AssemblyAI, Blurt (AssemblyAI's Mac dictation app), voice agents, transcription, dictation, speaker diarization, PII redaction of audio, LLM Gateway for audio understanding, or applying LLMs to transcripts. Also use when building voice agents with LiveKit or Pipecat that need speech-to-text, or when the user is working with any audio/video processing pipeline that could benefit from transcription, even if they don't mention AssemblyAI by name.
+description: Use when implementing speech-to-text, audio transcription, real-time streaming STT, dictation (spoken notes turned into cleaned-up text), text-to-speech (TTS, speech synthesis), audio intelligence features, or voice AI using AssemblyAI APIs or SDKs. Use when user mentions AssemblyAI, Blurt (AssemblyAI's Mac dictation app), voice agents, transcription, dictation, text-to-speech, speaker diarization, PII redaction of audio, LLM Gateway for audio understanding, or applying LLMs to transcripts. Also use when building voice agents with LiveKit or Pipecat that need speech-to-text, or when the user is working with any audio/video processing pipeline that could benefit from transcription, even if they don't mention AssemblyAI by name.
 ---
 
 # AssemblyAI Speech-to-Text and Voice AI
@@ -22,6 +22,8 @@ Authorization: YOUR_API_KEY
 | REST API (async) | `https://api.assemblyai.com` | `https://api.eu.assemblyai.com` |
 | Sync STT API (≤120s) | `https://sync.assemblyai.com` (global default, routes to nearest; `https://sync.us.assemblyai.com` for US residency) | `https://sync.eu.assemblyai.com` |
 | Dictation API (≤120s, transcript + rewrite) | `https://dictation.assemblyai.com` (global default, routes to nearest; `https://dictation.us.assemblyai.com` for US residency) | `https://dictation.eu.assemblyai.com` |
+| Text-to-Speech API (REST) | `https://tts.us.assemblyai.com` | `https://tts.eu.assemblyai.com` |
+| Text-to-Speech WebSocket | `wss://tts.us.assemblyai.com/v1/ws` | `wss://tts.eu.assemblyai.com/v1/ws` |
 | LLM Gateway | `https://llm-gateway.assemblyai.com/v1` | `https://llm-gateway.eu.assemblyai.com/v1` |
 | Streaming v3 | `wss://streaming.assemblyai.com/v3/ws` | `wss://streaming.eu.assemblyai.com/v3/ws` |
 | Streaming v2 (legacy) | `wss://api.assemblyai.com/v2/realtime/ws` | — |
@@ -32,8 +34,8 @@ Authorization: YOUR_API_KEY
 
 | Language | Install | Status |
 |----------|---------|--------|
-| Python | `pip install "assemblyai>=1.6.1"` | Active |
-| JavaScript/TypeScript | `npm i assemblyai@^4.41.5` | Active |
+| Python | `pip install "assemblyai>=1.8.2"` | Active |
+| JavaScript/TypeScript | `npm i assemblyai@^4.42.0` | Active |
 | Ruby | `assemblyai` gem | Active |
 | Java | `assemblyai-java-sdk` | **Discontinued April 2025** |
 | Go | `assemblyai-go-sdk` | **Discontinued April 2025** |
@@ -43,7 +45,7 @@ Authorization: YOUR_API_KEY
 
 ### SDK versions
 
-**Install the latest of each: Python `1.6.1` and Node `4.41.5` (both Sept 24, 2026).** These are the current releases. They carry the **Dictation API** (`DictationTranscriber` / `client.dictation`, added in Python 1.5.2 and Node 4.40.0), streaming sync uploads (`transcribe_live()` / `transcribeLive()`), the Node `client.llmGateway` service (4.38.0), `universal-3-6-pro` in the streaming model enum (Python 1.1.0 / Node 4.37.1), and mid-session speaker revisions via `speaker_labels_revision_interval_ms` (Python 1.6.1 / Node 4.41.5). The two SDKs version independently (the JS/TS SDK has been on 4.x since December 2023), so there is no shared version number to match on; match on the release carrying the same change instead.
+**Install the latest of each: Python `1.8.2` (Oct 23, 2026) and Node `4.42.0` (Oct 26, 2026).** These are the current releases. They add native **Text-to-Speech (TTS)** support (Python `aai.TextToSpeech`, `aai.AsyncTextToSpeech`, `aai.TTSSession`, `aai.AsyncTTSSession`, `aai.TTSConfig`; Node `client.tts`), alongside typed **Speech Understanding `summarization`** directly in `TranscriptionConfig` (Python 1.6.5 / Node 4.41.7), Dictation `rewrite_mode` (`"fast"` / `"smart"`, Python 1.6.4 / Node 4.41.6), the **Dictation API** (`DictationTranscriber` / `client.dictation`, added in Python 1.5.2 and Node 4.40.0), streaming sync uploads (`transcribe_live()` / `transcribeLive()`), the Node `client.llmGateway` service (4.38.0), `universal-3-6-pro` in the streaming model enum (Python 1.1.0 / Node 4.37.1), and mid-session speaker revisions via `speaker_labels_revision_interval_ms` (Python 1.6.1 / Node 4.41.5). The two SDKs version independently (the JS/TS SDK has been on 4.x since December 2023), so there is no shared version number to match on; match on the release carrying the same change instead.
 
 Always check the installed version (`pip show assemblyai` / `npm ls assemblyai`) before writing code against `DictationTranscriber` or `client.dictation` in an existing project — anything older than the versions above has no dictation surface.
 
@@ -161,7 +163,7 @@ A **separate service** (own hostname, own request shape — not Sync, not Pre-re
 - **Upload while recording:** the body streams, so open the request when the user starts speaking and push PCM frames as captured (config first; don't go silent mid-body; a chunked body can't be replayed — keep audio in memory to retry)
 - **Pre-warming:** `GET https://dictation.assemblyai.com/warm` (unauthenticated, `200 {"warm":"toasty"}`; `/v1/warm` also works) — same client and same host as the transcription, shortly before it
 - **Errors:** two shapes — `{status, title, detail}` for most, `{error, error_code}` only for request-parsing failures; read `detail` then fall back to `error`. 429/502/503/504 transient; 400/413/415 fix the request; 401 fix the key. Client timeout 90s
-- **SDKs:** `DictationTranscriber` (Python **≥1.5.2**, `assemblyai.dictation.v1`; install the current 1.6.1) and `client.dictation` (Node **≥4.40.0**; install the current 4.41.5), both from Sept 11, 2026. Check the installed version before using the SDK path in an existing project; on an older SDK, call the endpoint over HTTP. See `references/dictation.md`
+- **SDKs:** `DictationTranscriber` (Python **≥1.5.2**, `assemblyai.dictation.v1`; install the current 1.8.2) and `client.dictation` (Node **≥4.40.0**; install the current 4.42.0), both from Sept 11, 2026. Check the installed version before using the SDK path in an existing project; on an older SDK, call the endpoint over HTTP. See `references/dictation.md`
 
 ```bash
 curl -X POST https://dictation.assemblyai.com/v1/transcribe/live \
@@ -188,7 +190,7 @@ See `references/llm-gateway.md` for models, tool calling, structured outputs, an
 |--------|---------|
 | `prompt` + `keyterms_prompt` | **Complementary** for Universal-3.5 Pro — use either or both together. `prompt` is a contextual *description* of the audio; `keyterms_prompt` is an explicit term list. Neither changes output formatting |
 | `prompt` is context, not instructions | Universal-3.5 Pro's `prompt` *describes* the audio (domain/scenario/details). Formatting or behavioral commands (punctuation rules, "transcribe verbatim", negative directives like "don't…") are **not supported** and are ignored — transcription behavior is managed internally |
-| `summarization` / `auto_chapters` (top-level params) | **Deprecated.** Use **Speech Understanding** `summarization` (chaptered summary w/ timestamps + headlines) or `action_items` — `speech_understanding.request.<feature>` on `POST /v2/transcript` — or the LLM Gateway for fully custom prompts. **SDK caveat (Python 1.6.1 / Node 4.41.5):** both SDKs type `speech_understanding.request` with only `speaker_identification`/`translation`/`custom_formatting`. Python **silently drops** `summarization`/`action_items` (the API then 400s with `speech_understanding.request is empty`), so send those over raw REST. Node passes them through at runtime, but TypeScript needs an `as any` cast. `summary_type` (`bullets`/`paragraph`) is required |
+| `summarization` / `auto_chapters` (top-level params) | **Deprecated.** Use **Speech Understanding** `summarization` (chaptered summary w/ timestamps + headlines) or `action_items` — `speech_understanding.request.<feature>` on `POST /v2/transcript` — or the LLM Gateway for fully custom prompts. **SDK caveat:** `summarization` is typed since Python 1.6.5 / Node 4.41.7, so it goes through the SDK. `action_items` is still not typed (Python 1.8.2 / Node 4.42.0): Python **silently drops** it (a request with nothing else then 400s with `speech_understanding.request is empty`), so send it over raw REST; Node passes it through at runtime, but TypeScript needs an `as any` cast. `summary_type` (`bullets`/`paragraph`) is required |
 | PII redaction scope | Only redacts words in `text` — other feature outputs (entities, summaries) may still expose sensitive data |
 | PII location policies | `redact_pii_policies` now supports granular location types (July 2026): `location_address`, `location_address_street`, `location_city`, `location_state`, `location_country`, `location_zip`, `location_coordinate`. A full contiguous address is one `location_address` span; standalone fragments get their subtype |
 | PII audio redaction method | `override_audio_redaction_method: "silence"` replaces PII with silence instead of default beep |
@@ -260,13 +262,13 @@ See `references/voice-agents.md` for setup code, and start from the reference ag
 | Treating Dictation `llm_error` as a failed request | The rewrite is best-effort — a `200` with `llm_response: null` and `llm_error: "timeout"`/`"error"` still carries the verbatim `text`. Fall back to `text` (SDK: `final_text`) |
 | Dictation `language_codes: "es"` (string) or `language_code` | It's always a **list**: `language_codes: ["es"]` |
 | Passing `model`, `timestamps`, `conversation_context`, `speaker_labels`, or `redact_pii` in Dictation `config` | Unknown fields → `400`. Dictation's config is exactly `sample_rate`, `channels`, `language_codes`, `stt_prompt`, `keyterms_prompt`, `llm_instruction` |
-| `aai.DictationTranscriber` / `client.dictation` on an older SDK | Only in Python ≥1.5.2 / Node ≥4.40.0 (Sept 11, 2026) — install the current 1.6.1 / 4.41.5. Verify the installed version; otherwise use raw HTTP |
+| `aai.DictationTranscriber` / `client.dictation` on an older SDK | Only in Python ≥1.5.2 / Node ≥4.40.0 (Sept 11, 2026) — install the current 1.8.2 / 4.42.0. Verify the installed version; otherwise use raw HTTP |
 | Hardcoding v2 streaming URL | v3 (`/v3/ws`) is current; v2 still works but is legacy |
 | Using `speech_model=u3-rt-pro` for streaming | **Removed July 2026** from the model picker and streaming spec enum — use `universal-3-6-pro` (the streaming default since Sept 29, 2026). From **September 2, 2026** `u3-rt-pro` connections are silently redirected to `universal-3-5-pro`. Set a different model only for cost tradeoffs (`universal-streaming-english`/`-multilingual`) |
 | Using `universal-3-5-pro` for new streaming code | Use **`universal-3-6-pro`**: same parameters, 32 languages instead of 19. 3.5 Pro is still fully supported, so keep it only when a project is deliberately pinned to it |
 | `universal-3-6-pro` on pre-recorded or Sync STT | 3.6 Pro is GA for **streaming only** (async is a preview). Use `universal-3-5-pro` in async `speech_models` and the Sync `X-AAI-Model` header. Dictation takes no model at all |
 | `speech_model="universal-3-6"` | Not a documented model, even though both SDK enums list it. Use `universal-3-6-pro` |
-| Python SDK rejects `universal-3-6-pro` / `universal-3-5-pro` | The SDK validates streaming `speech_model` locally against an enum: releases before `1.1.0` omit `universal-3-6-pro` (1.0.0 raises `ValidationError`), and pre-`0.64.21` releases omit `universal-3-5-pro`. Install the current release — `pip install "assemblyai>=1.6.1"` (or `pip install -U assemblyai`). Node doesn't check at runtime, but TypeScript rejects `"universal-3-6-pro"` before 4.37.1 |
+| Python SDK rejects `universal-3-6-pro` / `universal-3-5-pro` | The SDK validates streaming `speech_model` locally against an enum: releases before `1.1.0` omit `universal-3-6-pro` (1.0.0 raises `ValidationError`), and pre-`0.64.21` releases omit `universal-3-5-pro`. Install the current release — `pip install "assemblyai>=1.8.2"` (or `pip install -U assemblyai`). Node doesn't check at runtime, but TypeScript rejects `"universal-3-6-pro"` before 4.37.1 |
 | `aai.SpeechModel.universal_3_5_pro` in Python SDK | The top-level (async) `aai.SpeechModel` has no such member — use raw strings in `speech_models`: `"universal-3-5-pro"`, `"universal-2"`. The streaming enum is a different class (`assemblyai.streaming.v3.SpeechModel`, which does have `universal_3_6_pro`); a raw `"universal-3-6-pro"` string works there too |
 | `aai.Lemur(...)` / `client.lemur` in the SDKs | **Removed** — Python 1.0.0 and Node 4.37.0 deleted the LeMUR surface entirely (the endpoints answer 404). Transcribe, then send `transcript.text` to the LLM Gateway |
 | `pip install "assemblyai[extras]"` | **Removed in Python 1.0.0** — the `[extras]` option fails outright. Use `pip install -U assemblyai` |
@@ -279,6 +281,13 @@ See `references/voice-agents.md` for setup code, and start from the reference ag
 | LLM Gateway response `choices[i].tool_calls` | Tool calls live under `message`: `choices[i].message.tool_calls`, not at the choice level |
 | Speech Understanding without the `request` wrapper | Features nest under `speech_understanding.request.<feature>` — `speech_understanding.translation` (no `.request`) is invalid. Results come back under `speech_understanding.response.<feature>` |
 | Custom Formatting params as booleans | `date`/`phone_number`/`email` are **format-pattern strings** (e.g. `"mm/dd/yyyy"`), not `true`/`false`. Only `format_utterances` is a boolean |
+| TTS `voice: "aai-kyla"` | Rejected with validation error — name the voice with `voice_id` (e.g. `voice_id="aai-kyla"` or `TTSConfig(voice_id=...)`) |
+| Calling `https://api.assemblyai.com` for TTS | 404 — TTS runs on dedicated endpoints: `https://tts.us.assemblyai.com` and `https://tts.eu.assemblyai.com` |
+| Setting `container="wav"` with `encoding="mp3"` | Rejected with validation error — WAV container only applies to PCM and G.711 codecs |
+| Omitting `session.flush()` in TTS WebSocket | Short text isn't spoken until the session ends (`Terminate` flushes it), so the reply arrives late — call `session.flush()` as soon as each reply's text is complete |
+| TTS `session.audio()` with no id after `session.flush()` | Hangs: with no id it reads the request still being written. Pass the id `flush()` returns: `session.audio(session.flush())` |
+| Using a bare voice name (`jane`) as a TTS `voice_id` | `voice_not_found` — TTS takes the library slug, `aai-jane` |
+| Minting a TTS token with `POST` | Use `GET https://token.assemblyai.com/v1/token?product=tts&expires_in_seconds=60`; both query parameters are required |
 
 ## Reference Files
 
@@ -286,6 +295,7 @@ Read the relevant reference file based on what the user needs:
 
 | File | When to read |
 |------|-------------|
+| `references/text-to-speech.md` | Text-to-Speech API: REST `/v1/speech` and WebSocket `/v1/ws`, recommended voice `aai-kyla`, 11 built-in voices plus the voice catalog, six languages, cloned voices by zone, limits and close codes, OpenAI-compatible route, Python (`TextToSpeech`, `TTSSession`)/Node SDK surface, barge-in, token minting |
 | `references/python-sdk.md` | Python SDK patterns and examples |
 | `references/js-sdk.md` | JavaScript/TypeScript SDK patterns |
 | `references/streaming.md` | Real-time/streaming STT: Universal-3.6 Pro (32 languages, `mode` presets, turn detection), v3 protocol and messages, `UpdateConfiguration`, diarization and `SpeakerRevision`, context carryover, voice focus, temp tokens, error codes |

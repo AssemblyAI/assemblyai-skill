@@ -1,12 +1,12 @@
 # AssemblyAI JavaScript/TypeScript SDK Reference
 
 ```bash
-npm i assemblyai@^4.41.5
+npm i assemblyai@^4.42.0
 ```
 
-**4.41.5 is the latest release (Sept 24, 2026).** Install it, or `npm i assemblyai@latest` for whatever is newest if you are reading this later. Requires Node `>=18`. The matched Python version is `assemblyai>=1.6.1` (Sept 24, 2026).
+**4.42.0 is the latest release (Oct 26, 2026).** Install it, or `npm i assemblyai@latest` for whatever is newest if you are reading this later. Requires Node `>=18`. The matched Python version is `assemblyai>=1.8.2` (Oct 23, 2026).
 
-Anything below **4.40.0** has no `client.dictation`, and below **4.38.0** no `client.llmGateway` — check `npm ls assemblyai` before writing code against them in an existing project, and fall back to raw `fetch` (see `references/dictation.md`) if the project can't upgrade yet.
+Anything below **4.42.0** has no `client.tts`, below **4.40.0** no `client.dictation`, and below **4.38.0** no `client.llmGateway` — check `npm ls assemblyai` before writing code against them in an existing project, and fall back to raw `fetch` (see `references/dictation.md`) if the project can't upgrade yet.
 
 The oldest release with the current API surface is **4.37.0** (Aug 28, 2026), which **removed LeMUR** (`client.lemur`, `LemurService`, and every Lemur request/response type) — the counterpart to Python 1.0.0 doing the same. Nothing else broke in it: no renames, no signature changes, so upgrading from 4.36.x is a drop-in unless you called `client.lemur`.
 
@@ -16,6 +16,9 @@ Recent additions worth knowing about, newest first:
 
 | Version | Change |
 |---------|--------|
+| 4.42.0 | **`client.tts`** for the Text-to-Speech API (§12): `synthesize()`, `stream()`, `session()`, `createTemporaryToken()`, `ttsBaseUrl` option, `TextToSpeechError` |
+| 4.41.7 | Typed Speech Understanding `summarization` request and response in the transcript config |
+| 4.41.6 | Dictation `rewrite_mode` (`"fast"` / `"smart"`) in the dictation config |
 | 4.41.5 | `speakerLabelsRevisionIntervalMs` streaming param (mid-session `speakerRevision` events; server clamps non-zero values to 120000–300000ms of audio) |
 | 4.41.1 | Dictation/sync config caps raised to match the service (`stt_prompt` 6000, keyterms 100 / 8000, `llm_instruction` 2048) |
 | 4.40.0 | **`client.dictation`** for the Dictation API (§11); `client.sync.transcribeLive()` / `openLive()` streaming upload; no-speech fallback options for transcripts |
@@ -184,7 +187,7 @@ for (const chapter of transcript.chapters!) {
 
 ### Summarization
 
-The top-level `summarization: true` param is **deprecated**. Use Speech Understanding summarization instead. The SDK sends `speech_understanding` through unchanged, so it works at runtime. But its types (still as of 4.41.5) only declare `speaker_identification`, `translation`, and `custom_formatting`, so in TypeScript **cast** the request and read the response loosely:
+The top-level `summarization: true` param is **deprecated**. Use Speech Understanding summarization instead. Since 4.41.7 the SDK types it (`SummarizationRequest`, `SummarizationResponse`):
 
 ```typescript
 const transcript = await client.transcripts.transcribe({
@@ -193,18 +196,18 @@ const transcript = await client.transcripts.transcribe({
   speech_understanding: {
     request: {
       summarization: { summary_type: "bullets", effort: "low" }, // summary_type is required
-      action_items: { effort: "low" },
     },
-  } as any, // SDK types lack summarization / action_items
+  },
 });
 
-const su = (transcript as any).speech_understanding?.response;
-console.log(su?.summarization?.block_summary);
-for (const chapter of su?.summarization?.summary ?? []) {
+const summary = transcript.speech_understanding?.response?.summarization;
+console.log(summary?.block_summary);
+for (const chapter of summary?.summary ?? []) {
   console.log(chapter.headline, chapter.bullets ?? chapter.text);
 }
-for (const item of su?.action_items?.items ?? []) console.log(item.action_item);
 ```
+
+`action_items` is still not in the types (as of 4.42.0). The SDK sends `speech_understanding` through unchanged, so it works at runtime: add `action_items: { effort: "low" }` under `request` with a cast (`as any`), and read `(transcript as any).speech_understanding?.response?.action_items?.items`.
 
 ### Content safety
 
@@ -387,7 +390,7 @@ The first argument accepts a local file path, raw audio bytes, a Blob, or a read
 
 `client.dictation` is a `DictationTranscriber` wrapping the **Dictation API** (`dictation.assemblyai.com`) — a separate service from `client.sync` that returns the verbatim transcript **and** an LLM-cleaned, send-ready rewrite in one call. Cleanup runs by default; `llm_instruction` asks for a different shape.
 
-**Version gate:** added in **4.40.0** (Sept 11, 2026); install the current **4.41.5**. Anything older (e.g. 4.37.x) has no `client.dictation` — check `npm ls assemblyai` in an existing project and fall back to the raw `fetch` example in `references/dictation.md` if it can't upgrade yet.
+**Version gate:** added in **4.40.0** (Sept 11, 2026); install the current **4.42.0**. Anything older (e.g. 4.37.x) has no `client.dictation` — check `npm ls assemblyai` in an existing project and fall back to the raw `fetch` example in `references/dictation.md` if it can't upgrade yet.
 
 ```typescript
 import { AssemblyAI } from "assemblyai";
@@ -431,3 +434,45 @@ console.log(final_text);
 ```
 
 See `references/dictation.md` for the endpoint, config limits, error shapes, and the raw-`fetch` fallback.
+
+---
+
+## 12. Text-to-Speech (SDK ≥4.42.0)
+
+`client.tts` speaks text with AssemblyAI's Text-to-Speech API. Requests go to `ttsBaseUrl` (`https://tts.us.assemblyai.com` by default; set `https://tts.eu.assemblyai.com` for the EU data zone). Name the voice with `voice_id` (sessions: `voiceId`); `aai-kyla` is the recommended voice.
+
+```typescript
+import { AssemblyAI } from "assemblyai";
+
+const client = new AssemblyAI({
+  apiKey: "YOUR_API_KEY",
+  // ttsBaseUrl: "https://tts.eu.assemblyai.com", // EU data zone
+});
+
+// One text in, the whole clip out (request fields are snake_case)
+const response = await client.tts.synthesize({
+  text: "Hello from AssemblyAI.",
+  voice_id: "aai-kyla",
+  container: "wav",
+});
+// response.audio is a Uint8Array
+
+// A WebSocket session for text streamed from an LLM (session params are camelCase)
+const session = client.tts.session({ voiceId: "aai-kyla" });
+await session.connect();
+for (const token of ["I can help ", "with that."]) {
+  session.generate(token); // Texts are joined exactly as sent: include the spaces
+}
+const flushId = session.flush();
+for await (const chunk of session.audio(flushId)) {
+  // Raw 16-bit PCM at 24 kHz; call session.cancel() here on barge-in
+}
+await session.close(); // Sends Terminate and waits for the summary
+```
+
+- Read a flushed request with `session.audio(flushId)`, using the id `flush()` returned. `audio()` with no id is the request still being written, so after `flush()` it waits for a request that never comes. `session.speak(text)` does `generate()`, `flush()` and `audio()` in one call.
+- `client.tts.stream({...})` returns the audio as it is generated (`for await (const chunk of stream)`).
+- In a browser, mint a token on your server with `await client.tts.createTemporaryToken({ expires_in_seconds: 60 })` and open the session with it; never ship the API key.
+- Failures throw `TextToSpeechError` (`errorCode`, `status`, `param`, `retryable`, `retryAfter`, `requestId`, `closeCode`, `body`).
+
+See `references/text-to-speech.md` for voices, parameters, the WebSocket protocol, limits and error codes.

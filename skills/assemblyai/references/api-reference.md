@@ -579,4 +579,34 @@ curl -X POST https://dictation.assemblyai.com/v1/transcribe/live \
   -F 'audio=@sample.wav;type=audio/wav'
 ```
 
-**SDKs:** `DictationTranscriber` / `AsyncDictationTranscriber` in Python ≥1.5.2 (`assemblyai.dictation.v1`; `aai.settings.dictation_base_url` for residency) and `client.dictation` in Node ≥4.40.0 (`dictationBaseUrl` client option). Install the current releases (Python 1.6.1, Node 4.41.5); on an older SDK, call over HTTP. See `references/dictation.md`.
+**SDKs:** `DictationTranscriber` / `AsyncDictationTranscriber` in Python ≥1.5.2 (`assemblyai.dictation.v1`; `aai.settings.dictation_base_url` for residency) and `client.dictation` in Node ≥4.40.0 (`dictationBaseUrl` client option). Install the current releases (Python 1.8.2, Node 4.42.0); on an older SDK, call over HTTP. See `references/dictation.md`.
+
+## 18. Text-to-Speech API (Speech Synthesis)
+
+A dedicated REST and WebSocket service converting text into audio, with eleven built-in voices (`aai-jane` default) plus the voice catalog and cloned voices, in six languages.
+
+| Endpoint | Host | Notes |
+|----------|------|-------|
+| `POST /v1/speech` | `https://tts.us.assemblyai.com` (US) / `https://tts.eu.assemblyai.com` (EU) | Buffered (`"stream": false`) or chunked HTTP streaming (`"stream": true`) |
+| `WSS /v1/ws` | `wss://tts.us.assemblyai.com/v1/ws` (US) / `wss://tts.eu.assemblyai.com/v1/ws` (EU) | Full-duplex WebSocket session |
+
+### Synthesize speech (`POST /v1/speech`)
+
+```bash
+curl -X POST https://tts.us.assemblyai.com/v1/speech \
+  -H "Authorization: YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "Hello from AssemblyAI Text-to-Speech.",
+    "voice_id": "aai-kyla",
+    "stream": false,
+    "container": "wav",
+    "sample_rate": 24000
+  }' \
+  --output sample.wav
+```
+
+- **Headers:** `Authorization: YOUR_API_KEY` (raw key). Browser clients mint a temporary token with `GET https://token.assemblyai.com/v1/token?product=tts&expires_in_seconds=60` and pass it to the WebSocket as `?token=`.
+- **Body fields:** `text` (string, required), `voice_id` (string, default `"aai-jane"`), `stream` (boolean, default `true`), `encoding` (`"pcm_s16le"`, `"pcm_mulaw"`, `"pcm_alaw"`, `"mp3"`), `container` (`"raw"`, `"wav"`), `sample_rate` (`8000`, `16000`, `22050`, `24000`, `44100`, `48000`), `bit_rate` (MP3 only: `32000`, `48000`, `64000`, `96000`, `128000`), `language` (`english`, `spanish`, `german`, `french`, `italian`, `portuguese`), `model_id`. `voice` is retired and refused (`422`). Default output is raw 16-bit PCM at 24 kHz with no header; set `container: "wav"` for a playable file.
+- **Response metadata:** Returned in `X-TTS-*` headers: `X-Request-Id`, `X-TTS-Region`, `X-TTS-Model`, `X-TTS-Voice-Id`, `X-TTS-Language`, `X-TTS-Encoding`, `X-TTS-Sample-Rate`, `X-TTS-Container`, `X-TTS-Billed-Characters`, `X-TTS-Audio-Duration-Ms` (buffered only), `X-TTS-Unknown-Params`.
+- See `references/text-to-speech.md` for full voice lists, WebSocket protocol details, token minting, and error handling.

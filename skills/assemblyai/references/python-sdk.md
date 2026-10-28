@@ -3,24 +3,27 @@
 ## Installation
 
 ```bash
-pip install "assemblyai>=1.6.1"
+pip install "assemblyai>=1.8.2"
 ```
 
-**1.6.1 is the latest release (Sept 24, 2026).** Install it, or `pip install -U assemblyai` for whatever is newest if you are reading this later. The matched JS/TS version is `assemblyai@^4.41.5` (Sept 24, 2026).
+**1.8.2 is the latest release (Oct 23, 2026).** Install it, or `pip install -U assemblyai` for whatever is newest if you are reading this later. The matched JS/TS version is `assemblyai@^4.42.0` (Oct 26, 2026), the first with `client.tts`.
 
-Anything below **1.5.2** has no `DictationTranscriber` — check `pip show assemblyai` before writing code against it in an existing project.
+Anything below **1.8.2** has no `TextToSpeech` or `TTSSession`, and anything below **1.5.2** has no `DictationTranscriber` — check `pip show assemblyai` before writing code against them in an existing project.
 
-What 1.1.0 → 1.6.1 added, newest first:
+What 1.1.0 → 1.8.2 added, newest first:
 
 | Version | Change |
 |---------|--------|
+| 1.8.2 | **Text-to-Speech (TTS) API** (§13): `TextToSpeech`, `AsyncTextToSpeech`, `TTSSession`, `AsyncTTSSession`, `TTSConfig`, `TTSContainer`, `TTSEncoding`, `TTSError`, `settings.tts_base_url` |
+| 1.6.5 | Typed Speech Understanding `summarization` in `TranscriptionConfig` (`SummarizationRequest`, `SummarizationResponse`) |
+| 1.6.4 | Dictation `rewrite_mode` (`"fast"` / `"smart"`) in `DictationConfig` |
 | 1.6.1 | Streaming `speaker_labels_revision_interval_ms` (mid-session `SpeakerRevision` messages); `LLMGateway` / `AsyncLLMGateway` client module |
 | 1.5.4 | Speech Understanding configurable through `TranscriptionConfig` |
 | 1.5.2 | **Dictation API** (§12): `DictationTranscriber`, `AsyncDictationTranscriber`, `DictationConfig` (incl. `stt_prompt`), `DictationError`, `settings.dictation_base_url`; Sync STT streaming upload via `SyncTranscriber.transcribe_live()` / push-style `open_live()`; sync and dictation config caps raised to match the service |
 | 1.3.0 | `short_file_diarization_method` on `SpeakerOptions`; `localization` on `language_detection_options`; PEP 561 `py.typed` marker |
 | 1.1.0 | `universal-3-6-pro` added to the streaming `SpeechModel` enum (1.0.0 rejects it with a `ValidationError`) |
 
-Most 0.x code runs on 1.x unchanged, but four things were removed or renamed in 1.0.0 (Aug 14, 2026) — see §14 for the full migration. 1.0.0 is the oldest release with the current API surface; anything on 0.x is a different SDK generation.
+Most 0.x code runs on 1.x unchanged, but four things were removed or renamed in 1.0.0 (Aug 14, 2026) — see §15 for the full migration. 1.0.0 is the oldest release with the current API surface; anything on 0.x is a different SDK generation.
 
 ## Authentication
 
@@ -62,6 +65,7 @@ Each product lives in a versioned subpackage. New code should import from it —
 | Pre-recorded / async | `from assemblyai.prerecorded.v2 import Transcriber, AsyncTranscriber, Transcript, TranscriptionConfig` |
 | Sync STT (≤120s) | `from assemblyai.sync.v1 import SyncTranscriber, AsyncSyncTranscriber, SyncTranscriptionConfig` |
 | Dictation (≤120s, transcript + rewrite; SDK ≥1.5.2) | `from assemblyai.dictation.v1 import DictationTranscriber, AsyncDictationTranscriber, DictationConfig, DictationError` |
+| Text-to-Speech (SDK ≥1.8.2) | `from assemblyai.tts.v1 import TextToSpeech, AsyncTextToSpeech, TTSSession, AsyncTTSSession, TTSConfig, TTSContainer, TTSEncoding, TTSError` |
 | Streaming / realtime | `from assemblyai.streaming.v3 import RealTimeTranscriber, RealTimeTranscriberOptions, RealTimeParameters` |
 
 Cross-cutting names are **not** re-exported by the subpackages — import `TranscriptStatus`, `TranscriptError`, `Settings`, `Client`, `AsyncClient`, and the global `settings` from the top-level package. Mixing both styles in one file is normal and expected.
@@ -285,7 +289,31 @@ for result in transcript.content_safety.results:
 
 ### Summarization
 
-The top-level `summarization=True` param is **deprecated**. Use Speech Understanding summarization instead. **Don't pass it through `TranscriptionConfig(speech_understanding=...)`.** The SDK's typed model (`SpeechUnderstandingFeatureRequests`, still true as of 1.6.1) only knows `speaker_identification`, `translation`, and `custom_formatting`, so `summarization` and `action_items` are **silently dropped**: the API then rejects the request with `speech_understanding.request is empty`, and the SDK's `Transcript` wouldn't expose the result anyway. Send the request over REST instead:
+The top-level `summarization=True` param is **deprecated**. Use Speech Understanding summarization instead. Since 1.6.5 the SDK types it (`SummarizationRequest`, `SummarizationResponse`), so it goes through `TranscriptionConfig(speech_understanding=...)`:
+
+```python
+import assemblyai as aai
+
+aai.settings.api_key = "YOUR_API_KEY"
+
+config = aai.TranscriptionConfig(
+    speaker_labels=True,
+    speech_understanding=aai.SpeechUnderstandingRequest(
+        request=aai.SpeechUnderstandingFeatureRequests(
+            # summary_type ("bullets" or "paragraph") is required
+            summarization=aai.SummarizationRequest(summary_type="bullets", effort="low"),
+        )
+    ),
+)
+transcript = aai.Transcriber().transcribe("https://example.com/audio.mp3", config)
+
+summary = transcript.speech_understanding.response.summarization
+print(summary.block_summary)
+for chapter in summary.summary or []:
+    print(chapter.headline, chapter.bullets or chapter.text)
+```
+
+**`action_items` is still not typed** (as of 1.8.2): the SDK silently drops it from the request, so a request with nothing else is rejected with `speech_understanding.request is empty`, and `Transcript` doesn't expose its result. For action items, send the request over REST:
 
 ```python
 import time
@@ -328,7 +356,7 @@ for item in response.get("action_items", {}).get("items", []):
     print(item["action_item"])
 ```
 
-The SDK works for `speaker_identification`, `translation`, and `custom_formatting` (typed request models in `aai.types`). For fully custom summaries, use the LLM Gateway (section 9).
+The SDK works for `speaker_identification`, `translation`, `custom_formatting` and `summarization` (typed request models in `aai.types`). For fully custom summaries, use the LLM Gateway (section 9).
 
 > **Note:** `summarization` and `auto_chapters` are mutually exclusive. Do not enable both in the same config.
 
@@ -432,7 +460,7 @@ transcriber.set_params(RealTimeSessionParameters(agent_context="What's your call
 
 `RealTimeSessionParameters` covers `min_turn_silence`, `max_turn_silence`, `vad_threshold`, `keyterms_prompt`, `prompt`, `agent_context`, `interruption_delay`, `language_codes`, `filter_profanity`, `session_heartbeat` (plus `end_of_turn_confidence_threshold` / `format_turns` for Universal Streaming). `filter_profanity` is also in the model, but set it at connect time. It has **no `mode` field**, and unknown fields are silently dropped, so to switch `mode` mid-stream you need the raw WebSocket `UpdateConfiguration` message.
 
-**SDK gaps to know about (1.6.1):**
+**SDK gaps to know about (still present in 1.8.2):**
 - `previous_context_n_turns` isn't a `RealTimeParameters` field and gets dropped silently. Leave it at the server default or use the raw WebSocket.
 - `TurnEvent` has no `utterance` or `speaker_confidence`, and `Word` has no `speaker_confidence`. Pydantic drops those fields on parse.
 - `BeginEvent.configuration` is typed with `model`, `mode`, and `api_version` only. Check `event.configuration.model` to confirm which model you got.
@@ -526,7 +554,7 @@ Accepts a local file path, raw bytes, or a stream — **not a URL**. There is al
 
 `DictationTranscriber` (`assemblyai.dictation.v1`, also `aai.DictationTranscriber`) wraps the **Dictation API** (`dictation.assemblyai.com`) — a separate service from Sync STT that returns the verbatim transcript **and** an LLM-cleaned, send-ready rewrite in one call. Cleanup runs by default; `llm_instruction` asks for a different shape.
 
-**Version gate:** added in **1.5.2** (Sept 11, 2026); install the current **1.6.1**. Anything older (e.g. 1.3.0) has no `DictationTranscriber` — check `pip show assemblyai` in an existing project and fall back to the raw HTTP example in `references/dictation.md` if it can't upgrade yet.
+**Version gate:** added in **1.5.2** (Sept 11, 2026); install the current **1.8.2**. Anything older (e.g. 1.3.0) has no `DictationTranscriber` — check `pip show assemblyai` in an existing project and fall back to the raw HTTP example in `references/dictation.md` if it can't upgrade yet.
 
 ```python
 import assemblyai as aai
@@ -581,9 +609,85 @@ See `references/dictation.md` for the endpoint, config limits, error shapes, and
 
 ---
 
-## 13. Asyncio Support
+## 13. Text-to-Speech (TTS, SDK ≥1.8.2)
 
-Every product has an asyncio transcriber: `AsyncTranscriber` (`prerecorded.v2`), `AsyncSyncTranscriber` (`sync.v1`), `AsyncDictationTranscriber` (`dictation.v1`, ≥1.5.2), and `AsyncRealTimeTranscriber` (`streaming.v3`).
+AssemblyAI's Text-to-Speech API converts text into studio-quality audio in English, Spanish, German, French, Italian and Portuguese. Name the voice with `voice_id`: eleven built-in voices (`aai-jane`, the default, through `aai-vera`) speak all six languages, and the voice catalog adds more by the same `aai-` slug pattern, including `aai-kyla`, the recommended voice.
+
+Requests route to `settings.tts_base_url` (`https://tts.us.assemblyai.com` by default; set `https://tts.eu.assemblyai.com` for EU data residency).
+
+### Buffered Synthesis (`synthesize`)
+
+Returns complete audio in `response.audio`:
+
+```python
+import assemblyai as aai
+
+aai.settings.api_key = "YOUR_API_KEY"
+
+tts = aai.TextToSpeech()
+
+# Generate a WAV file with Kyla, the recommended voice
+config = aai.TTSConfig(
+    voice_id="aai-kyla",
+    container=aai.TTSContainer.wav,
+    sample_rate=24000,
+)
+response = tts.synthesize("Hello from AssemblyAI Text-to-Speech!", config=config)
+
+with open("output.wav", "wb") as f:
+    f.write(response.audio)
+```
+
+### Streamed Synthesis (`stream`)
+
+Streams audio chunks in real-time as the server produces them:
+
+```python
+import assemblyai as aai
+
+aai.settings.api_key = "YOUR_API_KEY"
+
+tts = aai.TextToSpeech()
+
+config = aai.TTSConfig(
+    voice_id="aai-michael",
+    encoding=aai.TTSEncoding.pcm_mulaw,
+    sample_rate=8000,
+)
+
+with tts.stream("Streaming text directly to audio output.", config=config) as stream:
+    for chunk in stream:
+        pass
+```
+
+### WebSocket Session (`TTSSession`)
+
+Persistent full-duplex session for voice agents and pipelined LLM token generation. Open it with `with`, which connects and, on exit, sends `Terminate`:
+
+```python
+import assemblyai as aai
+
+aai.settings.api_key = "YOUR_API_KEY"
+
+with aai.TTSSession(config=aai.TTSConfig(voice_id="aai-alba")) as session:
+    # Stream text in chunks, then flush; include the spaces
+    session.generate("Streaming text ")
+    session.generate("token by token from an LLM.")
+    flush_id = session.flush()
+
+    for chunk in session.audio(flush_id):
+        pass
+```
+
+Pass `audio()` the id `flush()` returned. With no id it reads the request still being written, so after `flush()` it waits for a request that never comes.
+
+See `references/text-to-speech.md` for full voice lists, temporary token minting, error codes, and options.
+
+---
+
+## 14. Asyncio Support
+
+Every product has an asyncio transcriber or client: `AsyncTranscriber` (`prerecorded.v2`), `AsyncSyncTranscriber` (`sync.v1`), `AsyncDictationTranscriber` (`dictation.v1`, ≥1.5.2), `AsyncTextToSpeech` / `AsyncTTSSession` (`tts.v1`, ≥1.8.2), and `AsyncRealTimeTranscriber` (`streaming.v3`).
 
 The async HTTP transcribers hold a connection pool, so use them as async context managers and the pool is always released:
 
@@ -609,7 +713,7 @@ asyncio.run(main())
 
 ---
 
-## 14. Migrating from 0.x to 1.x
+## 15. Migrating from 0.x to 1.x
 
 Most 0.x code runs on 1.x unchanged. No method signature was narrowed, every argument that worked in 0.x still works, and the new ones are optional keywords. Four things actually break:
 
