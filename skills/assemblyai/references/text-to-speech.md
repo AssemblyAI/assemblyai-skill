@@ -239,7 +239,7 @@ For LiveKit or Pipecat voice agents, start from the reference agents in `referen
 
 ## Python SDK Reference (`assemblyai>=1.8.2`)
 
-Requests go to `aai.settings.tts_base_url` (`https://tts.us.assemblyai.com` by default; set `https://tts.eu.assemblyai.com` for the EU zone).
+Requests go to `aai.settings.tts_base_url` (`https://tts.us.assemblyai.com` by default; set `https://tts.eu.assemblyai.com` for the EU zone). The key comes from `aai.settings.api_key`, or pass it per client: `aai.TextToSpeech(api_key=...)`, `aai.TTSSession(config, api_key=...)`.
 
 ### 1. Buffered Synthesis (`synthesize`)
 
@@ -336,7 +336,7 @@ with aai.TTSSession(config=aai.TTSConfig(voice_id="aai-kyla")) as session:
         audio.extend(chunk)
 ```
 
-Audio chunks are `bytes`. The session reads frames on its own thread, so `generate()`, `flush()` and `cancel()` can be called from another thread, and the session stays open after `cancel()` for the next reply. Read a flushed request's audio with `session.audio(flush_id)`, using the id `flush()` returned. `audio()` with no id reads the request still being written: call it that way only from another thread while `generate()` is still sending. After `flush()`, it waits for a request that never comes.
+Audio chunks are `bytes`. The session reads frames on its own thread, so `generate()`, `flush()` and `cancel()` can be called from another thread, and the session stays open after `cancel()` for the next reply. Read a flushed request's audio with `session.audio(flush_id)`, using the id `flush()` returned. `audio()` with no id reads the request still being written: call it that way only from another thread while `generate()` is still sending. After `flush()`, it waits for a request that never comes. Between replies further apart than the 120 s idle timeout, call `session.keep_alive()`.
 
 ### 5. Async Support (`AsyncTextToSpeech`, `AsyncTTSSession`)
 
@@ -403,7 +403,7 @@ await session.close();
 const token = await client.tts.createTemporaryToken({ expires_in_seconds: 60 });
 ```
 
-Failures throw `TextToSpeechError` (`errorCode`, `status`, `param`, `retryable`, `retryAfter`, `requestId`, `closeCode`, `body`).
+Audio chunks are `Uint8Array`. Session params also take `language`, `sampleRate` and `encoding`; `session.keepAlive()` restarts the idle timeout. Failures throw `TextToSpeechError` (`errorCode`, `status`, `param`, `retryable`, `retryAfter`, `requestId`, `closeCode`, `body`), exported from `"assemblyai"`.
 
 ---
 
@@ -422,6 +422,8 @@ Every API refusal raises `TTSError` (a rejected key included, as `401`), which c
 | `param` | string \| None | Faulty parameter name. |
 | `errors` | list \| None | Every failing field of an `invalid_parameter` refusal. |
 | `body` | dict \| None | The raw error envelope; on a WebSocket session `body["close_code"]` is the close code. |
+
+`aai.TTSError` and `from assemblyai import TTSError` are the same class.
 
 ```python
 import assemblyai as aai
