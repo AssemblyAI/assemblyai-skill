@@ -36,7 +36,7 @@ Authorization: YOUR_API_KEY
 | Language | Install | Status |
 |----------|---------|--------|
 | Python | `pip install "assemblyai>=1.8.2"` | Active |
-| JavaScript/TypeScript | `npm i assemblyai@^4.41.7` (or `^4.42.0` for TTS) | Active |
+| JavaScript/TypeScript | `npm i assemblyai@^4.42.0` | Active |
 | Ruby | `assemblyai` gem | Active |
 | Java | `assemblyai-java-sdk` | **Discontinued April 2025** |
 | Go | `assemblyai-go-sdk` | **Discontinued April 2025** |
@@ -46,7 +46,7 @@ Authorization: YOUR_API_KEY
 
 ### SDK versions
 
-**Install the latest of each: Python `1.8.2` and Node `4.41.7+` / `4.42.0`.** These are the current releases. Python `1.8.2` ships native **Text-to-Speech (TTS)** support (`aai.TextToSpeech`, `aai.AsyncTextToSpeech`, `aai.TTSSession`, `aai.AsyncTTSSession`, `aai.TTSConfig`), alongside typed **Speech Understanding `summarization`** directly in `TranscriptionConfig` (Python 1.6.5 / Node 4.41.7), Dictation `rewrite_mode` (`"fast"` / `"smart"`, Python 1.6.4 / Node 4.41.6), the **Dictation API** (`DictationTranscriber` / `client.dictation`, added in Python 1.5.2 and Node 4.40.0), streaming sync uploads (`transcribe_live()` / `transcribeLive()`), the Node `client.llmGateway` service (4.38.0), `universal-3-6-pro` in the streaming model enum (Python 1.1.0 / Node 4.37.1), and mid-session speaker revisions via `speaker_labels_revision_interval_ms` (Python 1.6.1 / Node 4.41.5). The two SDKs version independently (the JS/TS SDK has been on 4.x since December 2023), so there is no shared version number to match on; match on the release carrying the same change instead.
+**Install the latest of each: Python `1.8.2` (Oct 23, 2026) and Node `4.42.0` (Oct 26, 2026).** These are the current releases. They add native **Text-to-Speech (TTS)** support (Python `aai.TextToSpeech`, `aai.AsyncTextToSpeech`, `aai.TTSSession`, `aai.AsyncTTSSession`, `aai.TTSConfig`; Node `client.tts`), alongside typed **Speech Understanding `summarization`** directly in `TranscriptionConfig` (Python 1.6.5 / Node 4.41.7), Dictation `rewrite_mode` (`"fast"` / `"smart"`, Python 1.6.4 / Node 4.41.6), the **Dictation API** (`DictationTranscriber` / `client.dictation`, added in Python 1.5.2 and Node 4.40.0), streaming sync uploads (`transcribe_live()` / `transcribeLive()`), the Node `client.llmGateway` service (4.38.0), `universal-3-6-pro` in the streaming model enum (Python 1.1.0 / Node 4.37.1), and mid-session speaker revisions via `speaker_labels_revision_interval_ms` (Python 1.6.1 / Node 4.41.5). The two SDKs version independently (the JS/TS SDK has been on 4.x since December 2023), so there is no shared version number to match on; match on the release carrying the same change instead.
 
 Always check the installed version (`pip show assemblyai` / `npm ls assemblyai`) before writing code against `DictationTranscriber` or `client.dictation` in an existing project — anything older than the versions above has no dictation surface.
 
@@ -315,6 +315,9 @@ See `references/voice-agents.md` for full setup code.
 | Calling `https://api.assemblyai.com` for TTS | 404 — TTS runs on dedicated endpoints: `https://tts.us.assemblyai.com` and `https://tts.eu.assemblyai.com` |
 | Setting `container="wav"` with `encoding="mp3"` | Rejected with validation error — WAV container only applies to PCM and G.711 codecs |
 | Omitting `session.flush()` in TTS WebSocket | Audio generation does not complete — always call `session.flush()` after queueing `session.generate(...)` turns |
+| TTS `session.audio()` with no id after `session.flush()` | Hangs: with no id it reads the request still being written. Pass the id `flush()` returns: `session.audio(session.flush())` |
+| Using Voice Agent voice names (`juergen`, `jane`) as a TTS `voice_id` | `voice_not_found` — TTS takes a library slug such as `aai-jane`; the Voice Agent `voice` list is a different set |
+| Minting a TTS token with `POST` | Use `GET https://token.assemblyai.com/v1/token?product=tts&expires_in_seconds=60`; both query parameters are required |
 
 ## Reference Files
 
@@ -322,7 +325,7 @@ Read the relevant reference file based on what the user needs:
 
 | File | When to read |
 |------|-------------|
-| `references/text-to-speech.md` | Text-to-Speech API: REST `/v1/speech` and WebSocket `/v1/ws`, 16 in-house voices (US/UK English, Spanish, German, French, Italian, Portuguese), Python (`TextToSpeech`, `TTSSession`)/Node SDK surface, barge-in, token minting |
+| `references/text-to-speech.md` | Text-to-Speech API: REST `/v1/speech` and WebSocket `/v1/ws`, 11 built-in voices plus the voice catalog, six languages, cloned voices by zone, Python (`TextToSpeech`, `TTSSession`)/Node SDK surface, barge-in, token minting |
 | `references/python-sdk.md` | Python SDK patterns and examples |
 | `references/js-sdk.md` | JavaScript/TypeScript SDK patterns |
 | `references/streaming.md` | Real-time/streaming STT: Universal-3.6 Pro (32 languages, `mode` presets, turn detection), v3 protocol and messages, `UpdateConfiguration`, diarization and `SpeakerRevision`, context carryover, voice focus, temp tokens, error codes |

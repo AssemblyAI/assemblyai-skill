@@ -2,7 +2,7 @@
 
 AssemblyAI's Text-to-Speech (TTS) API converts text into ultra-realistic speech with low latency. It supports both **buffered and streamed HTTP synthesis** for single texts, and a **full-duplex WebSocket session** for streaming conversational audio in real-time voice applications.
 
-TTS is a **separate service** from Speech-to-Text (STT) and Voice Agents, with its own dedicated endpoints and hostnames (`tts.us.assemblyai.com` and `tts.eu.assemblyai.com`).
+TTS is a **separate service** from Speech-to-Text (STT) and Voice Agents, with its own dedicated endpoints and hostnames (`tts.us.assemblyai.com` and `tts.eu.assemblyai.com`). Its voices are named differently from the Voice Agent API's `voice` names (`juergen`, `lola`, …): TTS takes a library slug in `voice_id`, such as `aai-jane`.
 
 ---
 
@@ -16,11 +16,14 @@ POST https://tts.us.assemblyai.com/v1/speech
 
 | Host | Region / Data Residency |
 |------|------------------------|
-| `tts.us.assemblyai.com` | US data residency (default) |
-| `tts.eu.assemblyai.com` | EU data residency |
+| `tts.us.assemblyai.com` | US data zone (`us-east-1`) |
+| `tts.eu.assemblyai.com` | EU data zone (`eu-north-1`) |
 
-- **Buffered synthesis** (`"stream": false`): Returns complete audio bytes in the response body along with metadata in `X-TTS-*` response headers.
-- **Streamed synthesis** (`"stream": true`, default on the HTTP streaming route): Returns chunked audio as the model generates it, allowing playback to begin within tens of milliseconds.
+There is no global TTS host: the host picks the zone, and no parameter does.
+
+- **Streamed synthesis** (`"stream": true`, the default): Returns chunked audio as the model generates it, allowing playback to begin long before synthesis ends.
+- **Buffered synthesis** (`"stream": false`): Returns the complete audio in the response body, with metadata in `X-TTS-*` response headers.
+- **Word timings**: `POST /v1/speech/events` returns the audio and its word boundaries as server-sent events (PCM/G.711 only).
 
 ### WebSocket API (Real-Time Bidirectional Session)
 
@@ -30,10 +33,10 @@ wss://tts.us.assemblyai.com/v1/ws
 
 | Host | Region / Data Residency |
 |------|------------------------|
-| `wss://tts.us.assemblyai.com/v1/ws` | US data residency (default) |
-| `wss://tts.eu.assemblyai.com/v1/ws` | EU data residency |
+| `wss://tts.us.assemblyai.com/v1/ws` | US data zone |
+| `wss://tts.eu.assemblyai.com/v1/ws` | EU data zone |
 
-The WebSocket session allows conversational applications to pipeline text generation (`generate`), trigger audio flushes (`flush`), interrupt speech on barge-in (`cancel`), receive word boundaries (`wordBoundaries`), and stream synthesized audio chunks continuously over a persistent connection.
+The WebSocket session lets conversational applications stream text in as it is written (`Generate`), conclude a request (`Flush`), interrupt speech on barge-in (`Cancel`), receive word timings (`WordBoundaries` frames) and stream synthesized audio continuously over a persistent connection. See [WebSocket Protocol](#websocket-protocol) for the frames.
 
 ---
 
@@ -41,64 +44,56 @@ The WebSocket session allows conversational applications to pipeline text genera
 
 ### Server-Side Applications
 
-All HTTP and WebSocket requests authenticate using the same raw API key header:
+All HTTP and WebSocket requests authenticate with the API key in the `Authorization` header:
 
 ```
 Authorization: YOUR_API_KEY
 ```
 
-**Never** add a `Bearer ` prefix. Just pass the raw API key.
+The raw key and `Bearer YOUR_API_KEY` both work. Send exactly one credential: when the header is present, a `token` query parameter is ignored.
 
 ### Client-Side / Browser Sessions
 
-For client-side web or mobile applications where your private API key must not be exposed, generate a short-lived temporary token from your backend server:
+For browser or mobile apps, where the API key must not be exposed, mint a short-lived temporary token on your server. It is a `GET` with two required query parameters:
 
 ```bash
-curl -X POST https://token.assemblyai.com/v1/token \
-  -H "Authorization: YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"expires_in_seconds": 300}'
+curl "https://token.assemblyai.com/v1/token?product=tts&expires_in_seconds=60" \
+  -H "Authorization: YOUR_API_KEY"
 ```
 
-Pass the returned token in the `Authorization: Token <TEMPORARY_TOKEN>` header or as a `?token=<TEMPORARY_TOKEN>` query parameter when connecting to the WebSocket endpoint.
+```json
+{ "token": "eyJhbGciOi...", "expires_in_seconds": 60 }
+```
+
+- `product=tts` (required) and `expires_in_seconds` (required, `1`–`600`: how long the token can wait before it opens a session). Optional `max_session_duration_seconds` (at least `60`) caps the session.
+- `token.assemblyai.com` mints from the nearest region; `token.us.assemblyai.com` and `token.eu.assemblyai.com` mint within a zone.
+- On the WebSocket, pass the token as the `token` query parameter (`wss://tts.us.assemblyai.com/v1/ws?token=...`). The HTTP API reads credentials only from `Authorization`, never from the query string.
+- Mint a new token for every connection (reconnects included) and every HTTP request.
+- SDKs: Node `await client.tts.createTemporaryToken({ expires_in_seconds: 60 })` returns the token string; Python opens a session with `aai.TTSSession(config, token=token)`.
 
 ---
 
 ## Voices
 
-AssemblyAI provides 16 studio-quality in-house voices.
+Name every voice with `voice_id`. Leaving it out gives the default voice, `aai-jane`.
 
-### 11 Built-in Voices (English + Multilingual)
+### Built-in Voices
 
-All 11 built-in voices can speak all 6 supported core languages:
+Eleven AssemblyAI voices are built into the model: `aai-jane` (default), `aai-alba`, `aai-anna`, `aai-charles`, `aai-eve`, `aai-george`, `aai-jean`, `aai-mary`, `aai-michael`, `aai-paul` and `aai-vera`. They speak English by default, and any of the six languages when you set `language`.
 
-| Voice ID | Gender | Accent / Style | Notes |
-|----------|--------|----------------|-------|
-| `aai-jane` | Female | US English | **Default voice** |
-| `aai-alba` | Female | US English | Warm, friendly |
-| `aai-anna` | Female | US English | Clear, professional |
-| `aai-charles` | Male | US English | Deep, conversational |
-| `aai-eve` | Female | US English | Expressive, energetic |
-| `aai-george` | Male | US English | Confident, narrative |
-| `aai-jean` | Female | US English | Natural, calm |
-| `aai-mary` | Female | US English | Authoritative, formal |
-| `aai-michael` | Male | US English | Articulate, approachable |
-| `aai-paul` | Male | UK English | British accent |
-| `aai-vera` | Female | UK English | British accent |
+### Voice Catalog
 
-### Native-Accent Multilingual Voices
+Beyond the built-ins, the voice catalog has library voices named by the same `aai-` slug pattern, such as `aai-sara` and `aai-kyla` (American English), `aai-lola` (British English), `aai-giovanni` (Italian), `aai-rafael` (Spanish) and `aai-estelle` (French). Browse them, with descriptions and samples, in the dashboard's Voice Library. A catalog voice speaks its own language unless `language` is set. Do not guess slugs: an unknown one is refused with `voice_not_found`.
 
-These voices are tuned for native language pronunciation:
+### Cloned Voices
 
-| Voice ID | Gender | Native Language |
-|----------|--------|-----------------|
-| `aai-giovanni` | Male | Italian |
-| `aai-lola` | Female | Spanish |
-| `aai-juergen` | Male | German |
-| `aai-rafael` | Male | Portuguese |
-| `aai-estelle` | Female | French |
+Cloned voices are created in the AssemblyAI dashboard and named by their ID (a UUID) or slug in `voice_id`. A cloned voice belongs to the data zone it was created in and works **only on that zone's host**. On the other host it is refused with `voice_not_found`. Cloned voices expire 60 days after biometric consent was last given; the owner renews it with `extend_biometric_consent: true`.
 
-> **Crucial Rule:** Always specify the voice with `voice_id` (e.g. `voice_id="aai-jane"`). Using `voice` is rejected with an explicit validation error pointing to `voice_id`.
+### Languages
+
+`language` takes the full English name: `english` (default), `spanish`, `german`, `italian`, `portuguese` or `french`. Case-insensitive. The API does not detect the language of the text: set `language` to match it.
+
+> **Crucial Rule:** Always specify the voice with `voice_id` (e.g. `voice_id="aai-jane"`). The `voice` parameter is retired. The HTTP API refuses it with `422 invalid_parameter`, the WebSocket closes `3006`, and `TTSConfig` raises a validation error. A bare name in `voice_id` (`voice_id="jane"`) is read as one of your own voices' slugs and refused with `voice_not_found`.
 
 ---
 
@@ -108,15 +103,24 @@ Send a JSON object with the following fields:
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `text` | string | **Required** | The text to speak. |
-| `voice_id` | string | `"aai-jane"` | Voice identifier (e.g. `"aai-alba"`, `"aai-charles"`). |
-| `stream` | boolean | `true` | `false` buffers until complete; `true` yields chunked audio. |
-| `language` | string | Voice default | Language name: `english`, `spanish`, `german`, `french`, `italian`, `portuguese` (case-insensitive). |
+| `text` | string | **Required** | The text to speak, 1 to 5,000 characters. |
+| `voice_id` | string | `"aai-jane"` | Voice identifier: a library slug (`"aai-alba"`) or a cloned voice's ID or slug. |
+| `stream` | boolean | `true` | `true` streams the audio as it is generated; `false` buffers it until complete. |
+| `language` | string | `english` (a cloned or catalog voice: its own) | `english`, `spanish`, `german`, `french`, `italian`, `portuguese` (case-insensitive). |
+| `model_id` | string | The language's default model | Such as `assemblyai-tts-1`. |
 | `sample_rate` | integer | `24000` | Output rate in Hz: `8000`, `16000`, `22050`, `24000`, `44100`, `48000`. |
-| `encoding` | string | `"pcm_s16le"` | Codec: `"pcm_s16le"` (16-bit linear PCM), `"pcm_mulaw"` (8-bit G.711 μ-law), `"pcm_alaw"` (8-bit G.711 A-law), or `"mp3"`. |
-| `container` | string | `"raw"` | Container format: `"raw"` (headerless audio bytes) or `"wav"`. Only valid for PCM/mulaw/alaw codecs (not MP3). |
+| `encoding` | string | `"pcm_s16le"` | Codec: `"pcm_s16le"` (16-bit linear PCM), `"pcm_mulaw"` / `"mulaw"` (8-bit G.711 μ-law), `"pcm_alaw"` / `"alaw"` (8-bit G.711 A-law), or `"mp3"`. Opus, AAC and FLAC are refused. |
+| `container` | string | `"raw"` | `"raw"` (headerless audio bytes) or `"wav"`. `wav` needs a `pcm_*` encoding (not MP3). |
 | `bit_rate` | integer | `64000` | MP3 bit rate in bps: `32000`, `48000`, `64000`, `96000`, `128000` (max `64000` at 8 kHz). Only with `encoding="mp3"`. |
-| `extend_biometric_consent` | boolean | `false` | When using a custom cloned voice, set `true` to renew the 60-day biometric consent window. |
+| `extend_biometric_consent` | boolean | `false` | Renews the 60-day biometric consent of the cloned voice in `voice_id`; the voice's owner only. |
+| `word_boundaries` | boolean | `false` | `true` is refused on `/v1/speech`; use `/v1/speech/events` for word timings. |
+| `speed` | number | none | Only `1` is accepted: there is no speed control. |
+
+Unknown fields are ignored and listed in `X-TTS-Unknown-Params`, so check it for typos. A body field sent in the query string is refused.
+
+### Output Format
+
+The default output is **raw** mono signed 16-bit little-endian PCM at 24 kHz with no header (`Content-Type: audio/pcm;rate=24000;channels=1`), not a playable WAV file. Ask for `"container": "wav"` to get a file a player opens, or play raw PCM with `ffplay -f s16le -ar 24000 -ac 1 speech.pcm`. G.711 is `audio/PCMU` / `audio/PCMA`, and MP3 is `audio/mpeg`.
 
 ### Response Headers (`X-TTS-*`)
 
@@ -125,20 +129,55 @@ On a `200 OK` response, metadata is returned in response headers:
 | Header | Description |
 |--------|-------------|
 | `X-Request-Id` | Unique ID for support and diagnostics. |
-| `X-TTS-Region` | AWS region that synthesized the audio (e.g. `us-west-2`). |
+| `X-TTS-Region` | Region that synthesized the audio (e.g. `us-east-1`). |
 | `X-TTS-Model` | Model used (e.g. `assemblyai-tts-1`). |
 | `X-TTS-Voice-Id` | Active voice ID. |
-| `X-TTS-Language` | Language code used. |
+| `X-TTS-Voice-Expires-At` | A cloned voice's expiry, in Unix seconds. |
+| `X-TTS-Language` | Language used (e.g. `english`). |
 | `X-TTS-Encoding` | Codec (e.g. `pcm_s16le`, `pcm_mulaw`). |
 | `X-TTS-Sample-Rate` | Sample rate in Hz. |
-| `X-TTS-Container` | Container format (`raw` or `wav`). |
-| `X-TTS-Bit-Rate` | MP3 bit rate if applicable. |
-| `X-TTS-Billed-Characters`| Total billed character count. |
-| `X-TTS-Audio-Duration-Ms`| Audio length in milliseconds. |
+| `X-TTS-Container` | Container format (`raw` or `wav`); absent with MP3. |
+| `X-TTS-Bit-Rate` | MP3 bit rate, with MP3 only. |
+| `X-TTS-Billed-Characters` | Total billed character count. |
+| `X-TTS-Audio-Duration-Ms` | Audio length in milliseconds (buffered responses only). |
+| `X-TTS-Unknown-Params` | Body fields the API did not recognize. |
+| `X-Client-Request-Id` | Your `X-Client-Request-Id`, echoed. |
+
+---
+
+## WebSocket Protocol
+
+Connect to `wss://tts.us.assemblyai.com/v1/ws` with these query parameters (all optional): `voice_id` (default `aai-jane`), `model_id`, `language`, `sample_rate`, `encoding` (`pcm_s16le`, `pcm_mulaw`, `pcm_alaw`; no MP3 or WAV on the WebSocket), `word_boundaries` (default `true`), `inactivity_timeout` (`5`–`120` seconds, default `120`), `extend_biometric_consent`, and `token`.
+
+**Client frames** are JSON text objects with a `type`. A binary frame is refused.
+
+| `type` | Effect |
+|--------|--------|
+| `Generate` | `{"type": "Generate", "text": "..."}` appends text to the current request. Texts are joined exactly as sent, so include the spaces. At most 2,000 characters per frame. |
+| `Flush` | Concludes the current request: everything sent is spoken, then one `FlushDone` arrives. Short text gets no audio until its `Flush`. |
+| `Cancel` | Barge-in: stops the request in flight and drops queued requests and unflushed text. The server answers `Cancelled`. |
+| `KeepAlive` | Restarts the inactivity timeout. |
+| `Terminate` | Ends the session cleanly; the server answers `Termination` and closes `1000`. |
+
+**Server frames**:
+
+| `type` | Fields |
+|--------|--------|
+| `Begin` | `id`, `expires_at`, `configuration` (sent first) |
+| `Audio` | `audio` (**base64** of raw codec bytes, in JSON, not a binary frame), `flush_id` |
+| `FlushDone` | `flush_id`, `audio_duration_ms` |
+| `WordBoundaries` | `flush_id`, `audio_start_ms`, `words` (each `{word, start, end, confidence}`) |
+| `Cancelled` | `audio_duration_seconds` |
+| `Termination` | `session_duration_seconds`, `total_input_char_length`, `audio_duration_seconds`, `voice_expires_at` |
+| `Error` | `error_code`, `error`, `error_type`, `retryable`, `param`, `retry_after_seconds` |
+
+**Close codes**: `1000` clean end; `1008` credential refused; `3005` server-side failure (retryable); `3006` bad input (parameter, frame, voice or language) and the inactivity timeout; `3008` session reached `expires_at`; `3009` too many new sessions this minute; `3010` input sent too fast; `3011` audio not read fast enough; `3012` voice not found, expired or blocked; `3014` cloned voice not paired with the model. Every failure close is preceded by an `Error` frame: branch on its `error_type` and `retryable`.
 
 ---
 
 ## Python SDK Reference (`assemblyai>=1.8.2`)
+
+Requests go to `aai.settings.tts_base_url` (`https://tts.us.assemblyai.com` by default; set `https://tts.eu.assemblyai.com` for the EU zone).
 
 ### 1. Buffered Synthesis (`synthesize`)
 
@@ -165,6 +204,8 @@ with open("output.wav", "wb") as f:
 print(f"Generated {response.audio_duration_ms}ms of audio ({response.billed_characters} chars)")
 ```
 
+A per-call `config` replaces the instance's default config whole, so repeat `voice_id` in it.
+
 ### 2. Streamed HTTP Audio (`stream`)
 
 Yields chunked audio bytes in real-time as the server produces them:
@@ -189,22 +230,20 @@ with tts.stream("Streaming straight to your audio output.", config=config) as st
 
 ### 3. Real-Time WebSocket Session (`TTSSession`)
 
-Ideal for voice agents, LLM pipelines, and conversational interfaces:
+Ideal for voice agents, LLM pipelines, and conversational interfaces. Open it with `with`: entering connects and waits for `Begin`; leaving sends `Terminate` and waits for the `Termination` summary. (`connect()` and `close()` also exist, but `close()` drops in-flight audio without `Terminate`.)
 
 ```python
 import assemblyai as aai
 
 aai.settings.api_key = "YOUR_API_KEY"
 
-session = aai.TTSSession(config=aai.TTSConfig(voice_id="aai-alba"))
-session.connect()
-
-# Simple request-response speaking
-for chunk in session.speak("How can I assist you today?"):
-    pass
-
-session.close()
+with aai.TTSSession(config=aai.TTSConfig(voice_id="aai-alba")) as session:
+    # speak() sends one text, flushes it, and yields its audio
+    for chunk in session.speak("How can I assist you today?"):
+        pass
 ```
+
+A session streams raw PCM or G.711: `TTSConfig` with `container="wav"` or `bit_rate` raises `ValueError` here. The SDK turns `WordBoundaries` frames off by default; pass `word_boundaries=True` to `TTSSession` to receive them.
 
 ### 4. Pipelining LLM Tokens & Barge-in (`generate`, `flush`, `cancel`)
 
@@ -215,23 +254,27 @@ import assemblyai as aai
 
 aai.settings.api_key = "YOUR_API_KEY"
 
-session = aai.TTSSession(config=aai.TTSConfig(voice_id="aai-jane"))
-session.connect()
 
-# Stream text in chunks as the LLM generates them
-session.generate("I can help ")
-session.generate("you find your order details.")
-session.flush()
+def user_started_speaking() -> bool:
+    return False  # Wire this to your STT turn detection
 
-# Read the synthesized audio
-for chunk in session.audio():
-    pass
 
-# If the user interrupts (barge-in): cancel pending audio immediately
-session.cancel()
+audio = bytearray()
 
-session.close()
+with aai.TTSSession(config=aai.TTSConfig(voice_id="aai-jane")) as session:
+    # Stream text in chunks as the LLM generates them; include the spaces
+    for token in ["I can help ", "you find ", "your order details."]:
+        session.generate(token)
+    flush_id = session.flush()  # Concludes the request and returns its id
+
+    for chunk in session.audio(flush_id):
+        if user_started_speaking():
+            session.cancel()  # Barge-in: stop this request and drop anything queued
+            break
+        audio.extend(chunk)
 ```
+
+Read a flushed request's audio with `session.audio(flush_id)`, using the id `flush()` returned. `audio()` with no id reads the request still being written: call it that way only from another thread while `generate()` is still sending. After `flush()`, it waits for a request that never comes.
 
 ### 5. Async Support (`AsyncTextToSpeech`, `AsyncTTSSession`)
 
@@ -240,14 +283,12 @@ import assemblyai as aai
 
 aai.settings.api_key = "YOUR_API_KEY"
 
-async_tts = aai.AsyncTextToSpeech()
-response = await async_tts.synthesize("Synthesized asynchronously.")
+async with aai.AsyncTextToSpeech() as async_tts:
+    response = await async_tts.synthesize("Synthesized asynchronously.")
 
-async_session = aai.AsyncTTSSession(config=aai.TTSConfig(voice_id="aai-paul"))
-await async_session.connect()
-async for chunk in async_session.speak("Speaking over async WebSocket."):
-    pass
-await async_session.close()
+async with aai.AsyncTTSSession(config=aai.TTSConfig(voice_id="aai-paul")) as async_session:
+    async for chunk in async_session.speak("Speaking over async WebSocket."):
+        pass
 ```
 
 ---
@@ -258,10 +299,11 @@ await async_session.close()
 import { AssemblyAI } from "assemblyai";
 
 const client = new AssemblyAI({
-  apiKey: "YOUR_API_KEY"
+  apiKey: "YOUR_API_KEY",
+  // ttsBaseUrl: "https://tts.eu.assemblyai.com", // EU data zone
 });
 
-// 1. Buffered synthesis
+// 1. Buffered synthesis (request fields are snake_case)
 const response = await client.tts.synthesize({
   text: "Hello from the Node.js SDK!",
   voice_id: "aai-jane",
@@ -278,7 +320,7 @@ for await (const chunk of stream) {
   // stream chunk
 }
 
-// 3. WebSocket session
+// 3. WebSocket session (session params are camelCase)
 const session = client.tts.session({ voiceId: "aai-michael" });
 await session.connect();
 
@@ -287,7 +329,12 @@ for await (const chunk of session.speak("WebSocket speech synthesis.")) {
 }
 
 await session.close();
+
+// 4. Temporary token for a browser session (server-side)
+const token = await client.tts.createTemporaryToken({ expires_in_seconds: 60 });
 ```
+
+Failures throw `TextToSpeechError` (`errorCode`, `status`, `param`, `retryable`, `retryAfter`, `requestId`, `closeCode`, `body`).
 
 ---
 
@@ -297,13 +344,15 @@ TTS errors raise `TTSError`, which contains the machine-readable error envelope:
 
 | Attribute | Type | Description |
 |-----------|------|-------------|
-| `message` | string | Human-readable explanation. |
-| `status_code` | int \| None | HTTP status (or `None` on WebSocket frames). |
-| `error_code` | string \| None | Stable code: `invalid_parameter`, `voice_not_found`, `biometric_terms_not_accepted`, `rate_limited`, `at_capacity`, `auth_unavailable`. |
+| `str(e)` | string | Human-readable explanation (there is no `.message` attribute). |
+| `status_code` | int \| None | HTTP status (`None` on a WebSocket session). |
+| `error_code` | string \| None | Stable code to branch on: `invalid_parameter`, `voice_not_found`, `biometric_terms_not_accepted`, `rate_limited`, `at_capacity`, `auth_unavailable`, … |
 | `retryable` | bool \| None | `true` if retrying with the same parameters may succeed. |
 | `retry_after` | int \| None | Backoff recommendation in seconds (from `Retry-After`). |
-| `request_id` | string \| None | Request UUID to quote when contacting AssemblyAI support. |
+| `request_id` | string \| None | Request UUID to quote when contacting AssemblyAI support (the session id on a WebSocket). |
 | `param` | string \| None | Faulty parameter name. |
+| `errors` | list \| None | Every failing field of an `invalid_parameter` refusal. |
+| `body` | dict \| None | The raw error envelope; on a WebSocket session `body["close_code"]` is the close code. |
 
 ```python
 import assemblyai as aai
@@ -316,8 +365,10 @@ except TTSError as e:
     if e.retryable:
         print(f"Transient error. Retry after {e.retry_after}s (Request: {e.request_id})")
     else:
-        print(f"Fatal error ({e.error_code}): {e.message}")
+        print(f"Fatal error ({e.error_code}): {e}")
 ```
+
+A streamed response cut after its first audio raises `TTSError` with `status_code` `200`, no `error_code` and `retryable` `True`: retry the whole request.
 
 ---
 
@@ -325,10 +376,15 @@ except TTSError as e:
 
 | Mistake | What Happens | Fix |
 |---------|--------------|-----|
-| Using `voice: "aai-jane"` | Request rejected with `ValueError` pointing to `voice_id` | Use `voice_id="aai-jane"` (or `TTSConfig(voice_id=...)`) |
-| Passing `Authorization: Bearer KEY` | `401 Unauthorized` | Pass raw key `Authorization: KEY` with no Bearer prefix |
+| Using `voice: "aai-jane"` | `422 invalid_parameter` (HTTP), close `3006` (WebSocket), validation error in `TTSConfig` | Use `voice_id="aai-jane"` (or `TTSConfig(voice_id=...)`) |
+| Using Voice Agent voice names (`juergen`, `jane`) as `voice_id` | `voice_not_found` | Use a TTS library slug such as `aai-jane`; Voice Agent `voice` names are a different list |
 | Calling `https://api.assemblyai.com` for TTS | `404 Not Found` | Use the dedicated TTS host: `https://tts.us.assemblyai.com` |
+| Using a cloned voice on the other zone's host | `voice_not_found` | Call the host of the zone the voice was created in |
 | Setting `container="wav"` with `encoding="mp3"` | Rejected with validation error | WAV container is only supported for PCM and G.711 codecs |
-| Putting private API key in frontend app | Security risk | Mint temporary tokens with `POST https://token.assemblyai.com/v1/token` |
-| Forgetting to call `session.flush()` after `session.generate(...)` | Server waits for more text and does not complete audio stream | Always call `session.flush()` when done queueing speech turns |
+| Saving the default output as `.wav` | File has no header and won't play | Default is raw PCM; set `container="wav"` or save as `.pcm` |
+| Putting private API key in frontend app | Security risk | Mint a temporary token with `GET https://token.assemblyai.com/v1/token?product=tts&expires_in_seconds=60` |
+| Minting a token with `POST` and a JSON body, or without `product=tts` | Refused (`422` when a query parameter is missing) | `GET` with `product=tts` and `expires_in_seconds` in the query string |
+| Forgetting to call `session.flush()` after `session.generate(...)` | Short text is never spoken; no `FlushDone` | Call `session.flush()` when a reply's text is complete |
+| `session.audio()` with no `flush_id` after `flush()` | Hangs until the session ends | `session.audio(session.flush())`, or `session.speak(text)` |
+| One `Generate` over 2,000 characters | Close `3006` | Split the text across `Generate` frames |
 | Trying to ingest URLs | TTS takes text in, returns speech out | Provide the text string in the `text` parameter |

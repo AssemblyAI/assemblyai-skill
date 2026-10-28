@@ -6,16 +6,15 @@
 pip install "assemblyai>=1.8.2"
 ```
 
-**1.8.2 is the latest release (Oct 2026).** Install it, or `pip install -U assemblyai` for whatever is newest if you are reading this later. The matched JS/TS version is `assemblyai@^4.41.7` (with `4.42.0` previewing TTS).
+**1.8.2 is the latest release (Oct 23, 2026).** Install it, or `pip install -U assemblyai` for whatever is newest if you are reading this later. The matched JS/TS version is `assemblyai@^4.42.0` (Oct 26, 2026), the first with `client.tts`.
 
-Anything below **1.8.0** has no `TextToSpeech` or `TTSSession`, and anything below **1.5.2** has no `DictationTranscriber` — check `pip show assemblyai` before writing code against them in an existing project.
+Anything below **1.8.2** has no `TextToSpeech` or `TTSSession`, and anything below **1.5.2** has no `DictationTranscriber` — check `pip show assemblyai` before writing code against them in an existing project.
 
 What 1.1.0 → 1.8.2 added, newest first:
 
 | Version | Change |
 |---------|--------|
-| 1.8.2 | Text-to-Speech stream cancellation, shared connection pools, and cut stream billing notes |
-| 1.8.0 | **Text-to-Speech (TTS) API** (§13): `TextToSpeech`, `AsyncTextToSpeech`, `TTSSession`, `AsyncTTSSession`, `TTSConfig`, `TTSContainer`, `TTSEncoding`, `TTSError`, `settings.tts_base_url` |
+| 1.8.2 | **Text-to-Speech (TTS) API** (§13): `TextToSpeech`, `AsyncTextToSpeech`, `TTSSession`, `AsyncTTSSession`, `TTSConfig`, `TTSContainer`, `TTSEncoding`, `TTSError`, `settings.tts_base_url` |
 | 1.6.5 | Typed Speech Understanding `summarization` in `TranscriptionConfig` (`SummarizationRequest`, `SummarizationResponse`) |
 | 1.6.4 | Dictation `rewrite_mode` (`"fast"` / `"smart"`) in `DictationConfig` |
 | 1.6.1 | Streaming `speaker_labels_revision_interval_ms` (mid-session `SpeakerRevision` messages); `LLMGateway` / `AsyncLLMGateway` client module |
@@ -24,7 +23,7 @@ What 1.1.0 → 1.8.2 added, newest first:
 | 1.3.0 | `short_file_diarization_method` on `SpeakerOptions`; `localization` on `language_detection_options`; PEP 561 `py.typed` marker |
 | 1.1.0 | `universal-3-6-pro` added to the streaming `SpeechModel` enum (1.0.0 rejects it with a `ValidationError`) |
 
-Most 0.x code runs on 1.x unchanged, but four things were removed or renamed in 1.0.0 (Aug 14, 2026) — see §14 for the full migration. 1.0.0 is the oldest release with the current API surface; anything on 0.x is a different SDK generation.
+Most 0.x code runs on 1.x unchanged, but four things were removed or renamed in 1.0.0 (Aug 14, 2026) — see §15 for the full migration. 1.0.0 is the oldest release with the current API surface; anything on 0.x is a different SDK generation.
 
 ## Authentication
 
@@ -66,7 +65,7 @@ Each product lives in a versioned subpackage. New code should import from it —
 | Pre-recorded / async | `from assemblyai.prerecorded.v2 import Transcriber, AsyncTranscriber, Transcript, TranscriptionConfig` |
 | Sync STT (≤120s) | `from assemblyai.sync.v1 import SyncTranscriber, AsyncSyncTranscriber, SyncTranscriptionConfig` |
 | Dictation (≤120s, transcript + rewrite; SDK ≥1.5.2) | `from assemblyai.dictation.v1 import DictationTranscriber, AsyncDictationTranscriber, DictationConfig, DictationError` |
-| Text-to-Speech (SDK ≥1.8.0) | `from assemblyai.tts.v1 import TextToSpeech, AsyncTextToSpeech, TTSSession, AsyncTTSSession, TTSConfig, TTSError` |
+| Text-to-Speech (SDK ≥1.8.2) | `from assemblyai.tts.v1 import TextToSpeech, AsyncTextToSpeech, TTSSession, AsyncTTSSession, TTSConfig, TTSError` |
 | Streaming / realtime | `from assemblyai.streaming.v3 import RealTimeTranscriber, RealTimeTranscriberOptions, RealTimeParameters` |
 
 Cross-cutting names are **not** re-exported by the subpackages — import `TranscriptStatus`, `TranscriptError`, `Settings`, `Client`, `AsyncClient`, and the global `settings` from the top-level package. Mixing both styles in one file is normal and expected.
@@ -586,9 +585,9 @@ See `references/dictation.md` for the endpoint, config limits, error shapes, and
 
 ---
 
-## 13. Text-to-Speech (TTS, SDK ≥1.8.0)
+## 13. Text-to-Speech (TTS, SDK ≥1.8.2)
 
-AssemblyAI's Text-to-Speech API converts text into studio-quality audio with 16 in-house voices across US English, UK English, Spanish, German, French, Italian, and Portuguese.
+AssemblyAI's Text-to-Speech API converts text into studio-quality audio in English, Spanish, German, French, Italian and Portuguese. Name the voice with `voice_id`: eleven built-in voices (`aai-jane`, the default, through `aai-vera`) speak all six languages, and the voice catalog adds more by the same `aai-` slug pattern.
 
 Requests route to `settings.tts_base_url` (`https://tts.us.assemblyai.com` by default; set `https://tts.eu.assemblyai.com` for EU data residency).
 
@@ -611,7 +610,7 @@ config = aai.TTSConfig(
 )
 response = tts.synthesize("Hello from AssemblyAI Text-to-Speech!", config=config)
 
-with open("/path/to/local/recording.wav", "wb") as f:
+with open("output.wav", "wb") as f:
     f.write(response.audio)
 ```
 
@@ -639,26 +638,24 @@ with tts.stream("Streaming text directly to audio output.", config=config) as st
 
 ### WebSocket Session (`TTSSession`)
 
-Persistent full-duplex session for voice agents and pipelined LLM token generation:
+Persistent full-duplex session for voice agents and pipelined LLM token generation. Open it with `with`, which connects and, on exit, sends `Terminate`:
 
 ```python
 import assemblyai as aai
 
 aai.settings.api_key = "YOUR_API_KEY"
 
-session = aai.TTSSession(config=aai.TTSConfig(voice_id="aai-alba"))
-session.connect()
+with aai.TTSSession(config=aai.TTSConfig(voice_id="aai-alba")) as session:
+    # Stream text in chunks, then flush; include the spaces
+    session.generate("Streaming text ")
+    session.generate("token by token from an LLM.")
+    flush_id = session.flush()
 
-# Stream text in chunks, then flush
-session.generate("Streaming text ")
-session.generate("token by token from an LLM.")
-session.flush()
-
-for chunk in session.audio():
-    pass
-
-session.close()
+    for chunk in session.audio(flush_id):
+        pass
 ```
+
+Pass `audio()` the id `flush()` returned. With no id it reads the request still being written, so after `flush()` it waits for a request that never comes.
 
 See `references/text-to-speech.md` for full voice lists, temporary token minting, error codes, and options.
 
@@ -666,7 +663,7 @@ See `references/text-to-speech.md` for full voice lists, temporary token minting
 
 ## 14. Asyncio Support
 
-Every product has an asyncio transcriber or client: `AsyncTranscriber` (`prerecorded.v2`), `AsyncSyncTranscriber` (`sync.v1`), `AsyncDictationTranscriber` (`dictation.v1`, ≥1.5.2), `AsyncTextToSpeech` / `AsyncTTSSession` (`tts.v1`, ≥1.8.0), and `AsyncRealTimeTranscriber` (`streaming.v3`).
+Every product has an asyncio transcriber or client: `AsyncTranscriber` (`prerecorded.v2`), `AsyncSyncTranscriber` (`sync.v1`), `AsyncDictationTranscriber` (`dictation.v1`, ≥1.5.2), `AsyncTextToSpeech` / `AsyncTTSSession` (`tts.v1`, ≥1.8.2), and `AsyncRealTimeTranscriber` (`streaming.v3`).
 
 The async HTTP transcribers hold a connection pool, so use them as async context managers and the pool is always released:
 
