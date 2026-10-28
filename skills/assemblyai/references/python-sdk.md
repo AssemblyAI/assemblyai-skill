@@ -587,7 +587,7 @@ See `references/dictation.md` for the endpoint, config limits, error shapes, and
 
 ## 13. Text-to-Speech (TTS, SDK ≥1.8.2)
 
-AssemblyAI's Text-to-Speech API converts text into studio-quality audio in English, Spanish, German, French, Italian and Portuguese. Name the voice with `voice_id`: eleven built-in voices (`aai-jane`, the default, through `aai-vera`) speak all six languages, and the voice catalog adds more by the same `aai-` slug pattern.
+AssemblyAI's Text-to-Speech API converts text into studio-quality audio in English, Spanish, German, French, Italian and Portuguese. Name the voice with `voice_id`: eleven built-in voices (`aai-jane`, the default, through `aai-vera`) speak all six languages, and the voice catalog adds more by the same `aai-` slug pattern, including `aai-kyla`, the recommended voice.
 
 Requests route to `settings.tts_base_url` (`https://tts.us.assemblyai.com` by default; set `https://tts.eu.assemblyai.com` for EU data residency).
 

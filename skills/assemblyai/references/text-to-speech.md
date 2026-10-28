@@ -2,7 +2,7 @@
 
 AssemblyAI's Text-to-Speech (TTS) API converts text into ultra-realistic speech with low latency. It supports both **buffered and streamed HTTP synthesis** for single texts, and a **full-duplex WebSocket session** for streaming conversational audio in real-time voice applications.
 
-TTS is a **separate service** from Speech-to-Text (STT), with its own dedicated endpoints and hostnames (`tts.us.assemblyai.com` and `tts.eu.assemblyai.com`). Voices are named by a library slug in `voice_id`, such as `aai-jane`.
+TTS is a **separate service** from Speech-to-Text (STT), with its own dedicated endpoints and hostnames (`tts.us.assemblyai.com` and `tts.eu.assemblyai.com`). Voices are named by a library slug in `voice_id`, such as `aai-kyla`.
 
 ---
 
@@ -94,7 +94,7 @@ Cloned voices are created in the AssemblyAI dashboard and named by their ID (a U
 
 `language` takes the full English name: `english` (default), `spanish`, `german`, `italian`, `portuguese` or `french`. Case-insensitive. The API does not detect the language of the text: set `language` to match it.
 
-> **Crucial Rule:** Always specify the voice with `voice_id` (e.g. `voice_id="aai-jane"`). The `voice` parameter is retired. The HTTP API refuses it with `422 invalid_parameter`, the WebSocket closes `3006`, and `TTSConfig` raises a validation error. A bare name in `voice_id` (`voice_id="jane"`) is read as one of your own voices' slugs and refused with `voice_not_found`.
+> **Crucial Rule:** Always specify the voice with `voice_id` (e.g. `voice_id="aai-kyla"`). The `voice` parameter is retired. The HTTP API refuses it with `422 invalid_parameter`, the WebSocket closes `3006`, and `TTSConfig` raises a validation error. A bare name in `voice_id` (`voice_id="jane"`) is read as one of your own voices' slugs and refused with `voice_not_found`.
 
 ---
 
@@ -453,7 +453,7 @@ A streamed response cut after its first audio raises `TTSError` with `status_cod
 
 | Mistake | What Happens | Fix |
 |---------|--------------|-----|
-| Using `voice: "aai-jane"` | `422 invalid_parameter` (HTTP), close `3006` (WebSocket), validation error in `TTSConfig` | Use `voice_id="aai-jane"` (or `TTSConfig(voice_id=...)`) |
+| Using `voice: "aai-kyla"` | `422 invalid_parameter` (HTTP), close `3006` (WebSocket), validation error in `TTSConfig` | Use `voice_id="aai-kyla"` (or `TTSConfig(voice_id=...)`) |
 | Using a bare voice name (`jane`) as `voice_id` | `voice_not_found` | Use the library slug, `aai-jane` |
 | Calling `https://api.assemblyai.com` for TTS | `404 Not Found` | Use the dedicated TTS host: `https://tts.us.assemblyai.com` |
 | Using a cloned voice on the other zone's host | `voice_not_found` | Call the host of the zone the voice was created in |

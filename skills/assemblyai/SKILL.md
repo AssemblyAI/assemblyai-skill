@@ -281,7 +281,7 @@ See `references/voice-agents.md` for setup code, and start from the reference ag
 | LLM Gateway response `choices[i].tool_calls` | Tool calls live under `message`: `choices[i].message.tool_calls`, not at the choice level |
 | Speech Understanding without the `request` wrapper | Features nest under `speech_understanding.request.<feature>` — `speech_understanding.translation` (no `.request`) is invalid. Results come back under `speech_understanding.response.<feature>` |
 | Custom Formatting params as booleans | `date`/`phone_number`/`email` are **format-pattern strings** (e.g. `"mm/dd/yyyy"`), not `true`/`false`. Only `format_utterances` is a boolean |
-| TTS `voice: "aai-jane"` | Rejected with validation error — name the voice with `voice_id` (e.g. `voice_id="aai-jane"` or `TTSConfig(voice_id=...)`) |
+| TTS `voice: "aai-kyla"` | Rejected with validation error — name the voice with `voice_id` (e.g. `voice_id="aai-kyla"` or `TTSConfig(voice_id=...)`) |
 | Calling `https://api.assemblyai.com` for TTS | 404 — TTS runs on dedicated endpoints: `https://tts.us.assemblyai.com` and `https://tts.eu.assemblyai.com` |
 | Setting `container="wav"` with `encoding="mp3"` | Rejected with validation error — WAV container only applies to PCM and G.711 codecs |
 | Omitting `session.flush()` in TTS WebSocket | Short text isn't spoken until the session ends (`Terminate` flushes it), so the reply arrives late — call `session.flush()` as soon as each reply's text is complete |
