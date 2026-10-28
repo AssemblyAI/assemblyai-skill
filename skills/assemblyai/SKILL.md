@@ -25,7 +25,6 @@ Authorization: YOUR_API_KEY
 | LLM Gateway | `https://llm-gateway.assemblyai.com/v1` | `https://llm-gateway.eu.assemblyai.com/v1` |
 | Streaming v3 | `wss://streaming.assemblyai.com/v3/ws` | `wss://streaming.eu.assemblyai.com/v3/ws` |
 | Streaming v2 (legacy) | `wss://api.assemblyai.com/v2/realtime/ws` | — |
-| Voice Agent API | `wss://agents.assemblyai.com/v1/ws` | `wss://agents.eu.assemblyai.com/v1/ws` |
 
 **Streaming data zones**: `streaming.eu.assemblyai.com` keeps audio and transcripts inside the EU, processed across AWS eu-central-1 (Frankfurt), eu-north-1 (Stockholm), eu-south-1 (Milan), eu-south-2 (Spain), eu-west-1 (Ireland), and eu-west-3 (Paris). `streaming.us.assemblyai.com` keeps them in the US (us-east-1/-2, us-west-1/-2). The default `streaming.assemblyai.com` edge-routes to the nearest region in either zone.
 
@@ -67,7 +66,7 @@ Nothing else breaks: `aai.settings.api_key`, `aai.Transcriber()`, and the flat i
 
 ## Speech-to-Text Models
 
-**Streaming: use `universal-3-6-pro`.** Universal-3.6 Pro Streaming (launched Sept 29, 2026) is the streaming flagship, the streaming server default, and the Voice Agent API's default STT: 32 languages, a drop-in replacement for `universal-3-5-pro` with the same parameters and features.
+**Streaming: use `universal-3-6-pro`.** Universal-3.6 Pro Streaming (launched Sept 29, 2026) is the streaming flagship and the streaming server default: 32 languages, a drop-in replacement for `universal-3-5-pro` with the same parameters and features.
 
 **Pre-recorded/async and Sync STT: use `universal-3-5-pro`.** Universal-3.6 Pro is generally available for **streaming only**; async 3.6 Pro is still a preview. `universal-3-6-pro` is not in the `POST /v2/transcript` `speech_models` enum, the Sync STT `X-AAI-Model` values, or either SDK's async/sync model types, so don't put it there. Dictation has no model selector (it runs on Universal-3.5 Pro), so there's nothing to set. Drop to `universal-2` only for cost or for languages outside Universal-3.5 Pro's 18 (async). `universal-3-pro` (async) and `u3-rt-pro` (streaming) are both **superseded** and removed from their model lists/enums.
 
@@ -219,29 +218,6 @@ See `references/llm-gateway.md` for models, tool calling, structured outputs, an
 | Close codes without an Error frame | `1000`/`1006` close the socket **without** an `Error` message, so `on_error` never fires — handle cleanup in `on_close`. `1009` means a single WebSocket message exceeded the server's **128 KB** read limit |
 | Data residency | The default `streaming.assemblyai.com` edge-routes to the nearest US **or** EU region. For residency guarantees, connect to `streaming.us.assemblyai.com` or `streaming.eu.assemblyai.com` explicitly (the EU zone now spans six AWS EU regions, not just Stockholm) |
 
-### Voice Agent API
-
-| Gotcha | Details |
-|--------|---------|
-| API URL | The Voice Agent endpoint is `wss://agents.assemblyai.com/v1/ws` — NOT `/v1/voice` (renamed April 2026), `/v1/realtime` (older), or `speech-to-speech.us.assemblyai.com` (very old) |
-| `tool.call` field | The argument dict is named `arguments`, not `args` (renamed April 2026) |
-| Underlying STT | The Voice Agent API transcribes with **Universal-3.6 Pro** by default. The documented session config has no STT model field; tune recognition with the `session.input` fields below |
-| Telephony | **Twilio** is the Voice Agent API's telephony integration: point a Twilio SIP trunk at `sip:sip.assemblyai.com`, or run a server that bridges Twilio Media Streams to the Voice Agent WebSocket with `audio/pcmu` in and out. **Telnyx is not a Voice Agent API integration.** For Telnyx numbers, use AssemblyAI streaming STT inside LiveKit (Telnyx SIP trunk into LiveKit rooms) or Pipecat (`TelnyxFrameSerializer`, 8 kHz). See `references/voice-agents.md` → Telephony Integration |
-| Stored agents (`agent_id`) | The first `session.update` either binds a reusable stored agent via `{"agent_id":"<id>"}` or sends inline config (`system_prompt`/`greeting`/`tools`/`input`/`output`). **As of July 2026 the two are no longer strictly exclusive**: a stored-agent session accepts `session.update` overrides for the mutable fields (`system_prompt`, `tools`, `input`) — the old `agent_id_no_overrides` error is gone. Still bootstrap-only: `greeting`, `output.voice`/`format`, `llm`, and HTTP-tool secrets. Create stored agents with `POST https://agents.assemblyai.com/v1/agents` |
-| Turn detection fields | Use `min_silence` (default 1000ms) and `max_silence` (default 3000ms) under `session.input.turn_detection` — `min_turn_silence`/`max_turn_silence` are the streaming/LiveKit/Pipecat field names, not Voice Agent API. Both must be in `[50, 10000]` ms with `min_silence < max_silence`. Setting either explicitly disables adaptive endpointing for the rest of the session. Since August 2026 these stored-agent settings are honored on **telephony calls** too (previously ignored on phone calls) |
-| Session-level STT tuning | `session.input` (type `audio`) now also takes `transcription_mode` (`balanced`/`min_latency`/`max_accuracy`), `continuous_partials` (bool), `transcription_prompt` (≤1750 chars — STT vocabulary context, distinct from `system_prompt`), `language_codes`, `voice_focus`/`voice_focus_threshold` (noise suppression), and `turn_detection.interruption_delay` (all added July 2026; updatable mid-call via `session.update`) |
-| Immutable fields | After `session.ready`, **immutable**: `greeting`, `output.voice`, `output.format` — changing them returns `immutable_field`. **Mutable**: `system_prompt`, `input.turn_detection`, `input.keyterms` (up to 100 strings), `input.transcription_mode`/`continuous_partials`/`transcription_prompt`/`language_codes`, `output.volume` (0–100), `tools`, `input.format` |
-| Greeting | The `greeting` is sent **straight to the TTS engine** — it is NOT passed through the LLM. Whatever string you set is exactly what the user hears, word for word. Don't write meta-greetings like "Greet the user warmly" — TTS will literally speak that |
-| Transcript delta events | `transcript.user.delta` carries the **cumulative** running partial for the current user turn — render the latest one, don't concatenate. `transcript.agent.delta` (July 2026) streams the agent's own words for live captions |
-| Hold-mode transcripts | While an `execution_mode: "hold"` tool is in flight, `transcript.user.delta` / `transcript.user` are NOT emitted in real time — they flush when the hold ends (on `tool.result` or `reply.create`) |
-| Tool results | `tool.result` accepts an **`is_error`** boolean (default false) so the agent knows the call failed; tools can define `response_instructions` (`{success, error}` strings) to steer how the agent voices each outcome |
-| Built-in tools | `GET https://agents.assemblyai.com/v1/builtin-tools` lists platform tools (currently `aai_credit_card_luhn_check`); attach one by passing its `name` in `tools[]`. The `aai_` name prefix is **reserved** — custom tools can't use it |
-| Audio pacing | Don't stream audio faster than realtime — excess frames are dropped server-side |
-| Session teardown billing | Just closing the WebSocket holds the session for 30s (resumable via `session.resume`) and **that grace window is billable**. Send `session.end` (`{"type":"session.end"}`) when the call is over to close immediately and stop billing — the server replies with a final `session.ended` (carrying `session_duration_seconds`, `audio_duration_seconds`) before closing the socket |
-| HTTP tool `headers` | Server-side HTTP tools take `headers` as a **list of `{name, value}` entries** (since June 2026), NOT a `{name: value}` dict. Reads return `{name, last_set_at}` only — values are write-only and never returned (not masked as `"***"`). Tool URLs must be **https**; `timeout_seconds` is 1–300 (default 120) |
-| BYO LLM (`llm`) | Set `llm` on a **stored agent** (REST create/update, not `session.update`) to run on your own OpenAI-compatible endpoint: `[{base_url, model, api_key}]` — one entry only, must stream, `api_key` write-only. `"llm": []` reverts to the managed model. Point `base_url` at the LLM Gateway to use a frontier model on your AssemblyAI account |
-| Session history & webhooks | The **Sessions API** (`GET /v1/sessions`, get/delete by id — includes the recording and conversation timeline; filter by `status`/`agent_id`, cursor-paged, limit 1–200) is the documented way to retrieve past sessions. Webhook subscriptions also exist: `POST https://agents.assemblyai.com/v1/webhook-subscriptions` (events: `session.started`/`session.completed`/`call.connected`/`call.ended`/`call.failed`; scope with `agent_id` or omit for account-wide). See `references/api-reference.md` |
-
 ### LiveKit / Pipecat (streaming STT inside a voice-agent framework)
 
 | Gotcha | Details |
@@ -251,7 +227,7 @@ See `references/llm-gateway.md` for models, tool calling, structured outputs, an
 | Pipecat model and version | `AssemblyAISTTService(settings=AssemblyAISTTService.Settings(model="universal-3-6-pro", ...))`. Needs `pipecat-ai` **1.9.0+**, and the service still defaults to `universal-3-5-pro`. `connection_params=AssemblyAIConnectionParams(...)` is **deprecated** and can't carry `mode`, `voice_focus`, `language_codes`, or `agent_context` |
 | Pipecat turn control | `vad_force_turn_endpoint=True` (default) lets Pipecat's VAD end turns and forces `max_turn_silence` equal to `min_turn_silence`. `False` hands turn detection to AssemblyAI; then set `mode` or the silences. `prompt` and `keyterms_prompt` can be combined on U3 Pro models |
 
-See `references/voice-agents.md` for full setup code.
+See `references/voice-agents.md` for setup code, and start from the reference agents it links: [LiveKit](https://github.com/AssemblyAI-Solutions/assemblyai-livekit-reference-voice-agent) and [Pipecat](https://github.com/AssemblyAI-Solutions/assemblyai-pipecat-reference-voice-agent).
 
 ### LLM Gateway
 
@@ -267,7 +243,7 @@ See `references/voice-agents.md` for full setup code.
 
 | Mistake | Correction |
 |---------|------------|
-| `Authorization: Bearer KEY` | `Authorization: KEY` (no Bearer prefix) — BUT the Voice Agent API (`agents.assemblyai.com`) uses `Authorization: Bearer KEY` |
+| `Authorization: Bearer KEY` | `Authorization: KEY` (no Bearer prefix) |
 | Using LeMUR API | **Deprecated.** Use LLM Gateway instead |
 | Using top-level `summarization` or `auto_chapters` | **Deprecated.** Use Speech Understanding `summarization`/`action_items` (`speech_understanding.request.<feature>`) or the LLM Gateway |
 | LeMUR `transcript_ids` with LLM Gateway | Pass transcript text in messages, not IDs |
@@ -296,17 +272,11 @@ See `references/voice-agents.md` for full setup code.
 | `pip install "assemblyai[extras]"` | **Removed in Python 1.0.0** — the `[extras]` option fails outright. Use `pip install -U assemblyai` |
 | `from assemblyai.extras import MicrophoneStream` | **Removed in Python 1.0.0.** The SDK does not capture microphone audio; use `pyaudio`/`sounddevice` and pass 16-bit PCM chunks to `RealTimeTranscriber.stream(...)` |
 | `StreamingClient` / `StreamingClientOptions` / `StreamingParameters` in Python | Renamed in 1.0.0 to `RealTimeTranscriber` / `RealTimeTranscriberOptions` / `RealTimeParameters`. The old names still resolve to the same objects, so this is style, not breakage — but write the `RealTime*` names in new code |
-| S2S `session.update` without `"session"` key | Must wrap config: `{"type":"session.update","session":{...}}` |
-| S2S tool schema using `{"function":{...}}` nesting | S2S tools are flat: `{"type":"function","name":"...","description":"...","parameters":{...}}` |
-| Voice Agent S2S URL | Correct URL: `wss://agents.assemblyai.com/v1/ws` — not `/v1/voice` (renamed April 2026), `/v1/realtime` (older), or `speech-to-speech.us.assemblyai.com` (very old) |
-| Voice Agent `tool.call` `args` field | Renamed to `arguments` — `event["arguments"]` is the parameter dict |
-| Telnyx with the Voice Agent API | Not supported. Twilio (SIP trunk or Media Streams) is the Voice Agent API's telephony integration; Telnyx works through LiveKit or Pipecat with streaming STT |
 | Pipecat `TelnyxTransport(...)` | No such class in `pipecat-ai`. Use `FastAPIWebsocketTransport` with `serializer=TelnyxFrameSerializer(...)` and 8 kHz in/out sample rates |
 | Pipecat `connection_params=AssemblyAIConnectionParams(speech_model=...)` | **Deprecated.** Use `settings=AssemblyAISTTService.Settings(model="universal-3-6-pro", ...)` |
 | Medical Mode `domain: "medical"` | Correct value is `domain: "medical-v1"` |
 | LLM Gateway tool result `role: "function_call_output"` | Correct role is `"tool"` — use `{"role": "tool", "tool_call_id": "...", "content": "..."}` |
 | LLM Gateway response `choices[i].tool_calls` | Tool calls live under `message`: `choices[i].message.tool_calls`, not at the choice level |
-| Sending `tool.result` immediately on `tool.call` | Wait until `reply.done` is the latest event received — sending earlier (mid transition phrase) or later (after a new turn started) breaks turn-taking |
 | Speech Understanding without the `request` wrapper | Features nest under `speech_understanding.request.<feature>` — `speech_understanding.translation` (no `.request`) is invalid. Results come back under `speech_understanding.response.<feature>` |
 | Custom Formatting params as booleans | `date`/`phone_number`/`email` are **format-pattern strings** (e.g. `"mm/dd/yyyy"`), not `true`/`false`. Only `format_utterances` is a boolean |
 
@@ -320,11 +290,11 @@ Read the relevant reference file based on what the user needs:
 | `references/js-sdk.md` | JavaScript/TypeScript SDK patterns |
 | `references/streaming.md` | Real-time/streaming STT: Universal-3.6 Pro (32 languages, `mode` presets, turn detection), v3 protocol and messages, `UpdateConfiguration`, diarization and `SpeakerRevision`, context carryover, voice focus, temp tokens, error codes |
 | `references/dictation.md` | Dictation API: transcript + LLM rewrite in one call, `llm_instruction`, `stt_prompt`/`keyterms_prompt`, chunked upload while recording, pre-warming, error shapes, Python/Node SDK surface |
-| `references/voice-agents.md` | Voice Agent API, LiveKit, Pipecat, Twilio/Telnyx telephony, turn detection, latency optimization |
+| `references/voice-agents.md` | LiveKit and Pipecat reference agents, LiveKit, Pipecat, telephony, turn detection, latency optimization |
 | `references/llm-gateway.md` | Applying LLMs to transcripts, tool calling, available models |
 | `references/speech-understanding.md` | Translation, speaker identification, custom formatting, summarization, action items (docs now group most transcript-analysis features here) |
 | `references/audio-intelligence.md` | PII redaction, diarization, sentiment, entity detection, topics — docs re-homed these under Speech Understanding & Guardrails, but the top-level request params are unchanged |
-| `references/api-reference.md` | Full parameter list, export endpoints, webhooks, upload, PII policies, Sync STT API, Dictation API, Voice Agents REST API (stored agents, sessions, built-in tools, HTTP-tool headers, BYO LLM, webhook subscriptions) |
+| `references/api-reference.md` | Full parameter list, export endpoints, webhooks, upload, PII policies, Sync STT API, Dictation API |
 
 ## API Spec Source of Truth
 
