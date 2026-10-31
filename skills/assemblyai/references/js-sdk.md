@@ -406,6 +406,7 @@ const result = await client.dictation.transcribeLive("/path/to/local/recording.w
   stt_prompt: "A doctor dictating a patient visit note.", // context, not instructions (≤6000 chars)
   keyterms_prompt: ["amoxicillin", "lisinopril", "metoprolol"], // ≤100 terms / 8000 chars
   llm_instruction: "Remove filler words and rewrite as a concise clinical chart note.", // ≤2048 chars
+  rewrite_mode: "fast", // "fast" | "smart" (SDK ≥4.41.6)
 });
 
 console.log(result.text); // verbatim transcript — never altered by the LLM
@@ -416,7 +417,7 @@ console.log(result.final_text); // llm_response ?? text (derived by the SDK)
 - `transcribeLive(audio, config?, options?)` accepts a local path, a data URL, `Uint8Array`/`ArrayBuffer`, `Blob`/`File`, a web `ReadableStream`, a Node stream, or any (async) iterable of `Uint8Array` chunks — the request starts immediately and uploads as chunks arrive. **Not an http(s) URL** (throws; use `client.transcripts` for URLs). `options`: `{ timeout?: number /* default 300_000 ms for the whole request */, signal?: AbortSignal }`.
 - `openLive(config?, options?)` is the **push-style** counterpart for callback-driven sources — returns a `DictationLiveSession`: `session.write(chunk)` (never blocks), `session.close()` ends the audio, `await session.result()` resolves the `DictationResponse`, `session.abort()` drops the request.
 - **Raw PCM** needs `sample_rate` **and** `channels` in the config (setting either marks the audio as PCM and both become required); leave both unset for WAV. Compressed formats are rejected by the service with `415`.
-- `DictationConfig` is exactly `{ sample_rate, channels, language_codes, stt_prompt, keyterms_prompt, llm_instruction }` — **no** `model`, `prompt`, `timestamps`, or `conversation_context` (those are `client.sync`). Caps are validated client-side; keyterms are trimmed and empties dropped.
+- `DictationConfig` is exactly `{ sample_rate, channels, language_codes, stt_prompt, keyterms_prompt, llm_instruction, rewrite_mode }` — **no** `model`, `prompt`, `timestamps`, or `conversation_context` (those are `client.sync`). Caps are validated client-side; keyterms are trimmed and empties dropped.
 - `DictationResponse`: `text`, `words[{text, confidence}]` (no timestamps), `confidence`, `llm_response`, `llm_error`, `audio_duration_ms`, `session_id`, `request_time_ms`, `sync_time_ms`, plus the SDK-derived `final_text`. Never treat a non-null `llm_error` as a failed request.
 - Failures throw `DictationError` (`.status`, `.errorCode`, `.retryAfter`). Auth, rate-limit, size and capacity errors can surface **mid-upload**.
 

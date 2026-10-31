@@ -34,7 +34,7 @@ Authorization: YOUR_API_KEY
 
 | Language | Install | Status |
 |----------|---------|--------|
-| Python | `pip install "assemblyai>=1.8.2"` | Active |
+| Python | `pip install "assemblyai>=1.9.0"` | Active |
 | JavaScript/TypeScript | `npm i assemblyai@^4.42.0` | Active |
 | Ruby | `assemblyai` gem | Active |
 | Java | `assemblyai-java-sdk` | **Discontinued April 2025** |
@@ -45,7 +45,7 @@ Authorization: YOUR_API_KEY
 
 ### SDK versions
 
-**Install the latest of each: Python `1.8.2` (Oct 23, 2026) and Node `4.42.0` (Oct 26, 2026).** These are the current releases. They add native **Text-to-Speech (TTS)** support (Python `aai.TextToSpeech`, `aai.AsyncTextToSpeech`, `aai.TTSSession`, `aai.AsyncTTSSession`, `aai.TTSConfig`; Node `client.tts`), alongside typed **Speech Understanding `summarization`** directly in `TranscriptionConfig` (Python 1.6.5 / Node 4.41.7), Dictation `rewrite_mode` (`"fast"` / `"smart"`, Python 1.6.4 / Node 4.41.6), the **Dictation API** (`DictationTranscriber` / `client.dictation`, added in Python 1.5.2 and Node 4.40.0), streaming sync uploads (`transcribe_live()` / `transcribeLive()`), the Node `client.llmGateway` service (4.38.0), `universal-3-6-pro` in the streaming model enum (Python 1.1.0 / Node 4.37.1), and mid-session speaker revisions via `speaker_labels_revision_interval_ms` (Python 1.6.1 / Node 4.41.5). The two SDKs version independently (the JS/TS SDK has been on 4.x since December 2023), so there is no shared version number to match on; match on the release carrying the same change instead.
+**Install the latest of each: Python `1.9.0` (Oct 28, 2026) and Node `4.42.0` (Oct 26, 2026).** These are the current releases. They add native **Text-to-Speech (TTS)** support (Python `aai.TextToSpeech`, `aai.AsyncTextToSpeech`, `aai.TTSSession`, `aai.AsyncTTSSession`, `aai.TTSConfig`; Node `client.tts`), alongside typed **Speech Understanding `summarization`** directly in `TranscriptionConfig` (Python 1.6.5 / Node 4.41.7), Dictation `rewrite_mode` (`"fast"` / `"smart"`, Python 1.6.4 / Node 4.41.6), the **Dictation API** (`DictationTranscriber` / `client.dictation`, added in Python 1.5.2 and Node 4.40.0), streaming sync uploads (`transcribe_live()` / `transcribeLive()`), the Node `client.llmGateway` service (4.38.0), `universal-3-6-pro` in the streaming model enum (Python 1.1.0 / Node 4.37.1), and mid-session speaker revisions via `speaker_labels_revision_interval_ms` (Python 1.6.1 / Node 4.41.5). The two SDKs version independently (the JS/TS SDK has been on 4.x since December 2023), so there is no shared version number to match on; match on the release carrying the same change instead.
 
 Always check the installed version (`pip show assemblyai` / `npm ls assemblyai`) before writing code against `DictationTranscriber` or `client.dictation` in an existing project — anything older than the versions above has no dictation surface.
 

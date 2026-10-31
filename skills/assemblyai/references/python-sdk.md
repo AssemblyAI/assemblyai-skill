@@ -3,17 +3,18 @@
 ## Installation
 
 ```bash
-pip install "assemblyai>=1.8.2"
+pip install "assemblyai>=1.9.0"
 ```
 
-**1.8.2 is the latest release (Oct 23, 2026).** Install it, or `pip install -U assemblyai` for whatever is newest if you are reading this later. The matched JS/TS version is `assemblyai@^4.42.0` (Oct 26, 2026), the first with `client.tts`.
+**1.9.0 is the latest release (Oct 28, 2026).** Install it, or `pip install -U assemblyai` for whatever is newest if you are reading this later. The matched JS/TS version is `assemblyai@^4.42.0` (Oct 26, 2026), the first with `client.tts`.
 
 Anything below **1.8.2** has no `TextToSpeech` or `TTSSession`, and anything below **1.5.2** has no `DictationTranscriber` — check `pip show assemblyai` before writing code against them in an existing project.
 
-What 1.1.0 → 1.8.2 added, newest first:
+What 1.1.0 → 1.9.0 added, newest first:
 
 | Version | Change |
 |---------|--------|
+| 1.9.0 | Share one TLS context across sessions, and keep TTS HTTP connections open for 120 s |
 | 1.8.2 | **Text-to-Speech (TTS) API** (§13): `TextToSpeech`, `AsyncTextToSpeech`, `TTSSession`, `AsyncTTSSession`, `TTSConfig`, `TTSContainer`, `TTSEncoding`, `TTSError`, `settings.tts_base_url` |
 | 1.6.5 | Typed Speech Understanding `summarization` in `TranscriptionConfig` (`SummarizationRequest`, `SummarizationResponse`) |
 | 1.6.4 | Dictation `rewrite_mode` (`"fast"` / `"smart"`) in `DictationConfig` |
@@ -567,6 +568,7 @@ config = DictationConfig(
     stt_prompt="A doctor dictating a patient visit note.",  # context, not instructions (≤6000 chars)
     keyterms_prompt=["amoxicillin", "lisinopril", "metoprolol"],  # ≤100 terms / 8000 chars
     llm_instruction="Remove filler words and rewrite as a concise clinical chart note.",  # ≤2048 chars
+    rewrite_mode="fast",  # "fast" (default) or "smart" (SDK ≥1.6.4)
 )
 
 with DictationTranscriber() as transcriber:
@@ -581,7 +583,7 @@ print(result.final_text)  # llm_response, falling back to text
 - `transcribe_live(data, config=None)` takes a local path, raw bytes, a binary file object, **or an iterator of PCM chunks** — the request starts immediately and uploads as you produce, so most of the utterance is uploaded by the time the speaker stops. **Not a URL** (`ValueError`).
 - `open_live(config=None)` is the **push-style** counterpart for callback-driven sources (a mic library, a WebRTC track, a telephony stream): returns a `DictationLiveSession` — `session.write(chunk)` from any thread (never blocks), `session.close()` ends the audio, `session.result()` returns the `DictationResponse`, `session.abort()` drops the request. As a context manager, a clean exit closes and an exception aborts.
 - **Raw PCM** needs `sample_rate` **and** `channels` on `DictationConfig` (setting either marks the audio as `audio/pcm`; leave both unset for WAV). Compressed formats are rejected by the service with `415`.
-- `DictationConfig` is `extra="forbid"` and validates the caps client-side: `sample_rate`, `channels`, `language_codes` (a list, e.g. `["es"]`), `stt_prompt`, `keyterms_prompt` (whitespace stripped, empties dropped), `llm_instruction`. **No** `model`, `prompt`, `timestamps`, or `conversation_context` — those are `SyncTranscriptionConfig`.
+- `DictationConfig` is `extra="forbid"` and validates the caps client-side: `sample_rate`, `channels`, `language_codes` (a list, e.g. `["es"]`), `stt_prompt`, `keyterms_prompt` (whitespace stripped, empties dropped), `llm_instruction`, `rewrite_mode`. **No** `model`, `prompt`, `timestamps`, or `conversation_context` — those are `SyncTranscriptionConfig`.
 - `DictationResponse.final_text` is a property: `llm_response` when present, else `text`. Never treat a non-`None` `llm_error` (`"timeout"` / `"error"`) as a failed request.
 - Failures raise `DictationError` (`status_code`, `error_code`, `retry_after` — seconds from `Retry-After` on 429/503, `None` when absent). Constructor takes `api_key=`, `client=`, a default `config=`, and `max_workers=` (thread pool for `open_live` sessions).
 - Settings: `aai.settings.dictation_base_url` (default `https://dictation.assemblyai.com`; set `dictation.us.` / `dictation.eu.` for residency) and `aai.settings.dictation_http_timeout` (300s, per socket operation).
