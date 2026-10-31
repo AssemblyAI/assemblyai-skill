@@ -24,6 +24,7 @@ Authorization: YOUR_API_KEY
 | Dictation API (≤120s, transcript + rewrite) | `https://dictation.assemblyai.com` (global default, routes to nearest; `https://dictation.us.assemblyai.com` for US residency) | `https://dictation.eu.assemblyai.com` |
 | Text-to-Speech API (REST) | `https://tts.us.assemblyai.com` | `https://tts.eu.assemblyai.com` |
 | Text-to-Speech WebSocket | `wss://tts.us.assemblyai.com/v1/ws` | `wss://tts.eu.assemblyai.com/v1/ws` |
+| MCP Server (Streamable HTTP) | `https://mcp.assemblyai.com/mcp` | — |
 | LLM Gateway | `https://llm-gateway.assemblyai.com/v1` | `https://llm-gateway.eu.assemblyai.com/v1` |
 | Streaming v3 | `wss://streaming.assemblyai.com/v3/ws` | `wss://streaming.eu.assemblyai.com/v3/ws` |
 | Streaming v2 (legacy) | `wss://api.assemblyai.com/v2/realtime/ws` | — |
@@ -288,6 +289,8 @@ See `references/voice-agents.md` for setup code, and start from the reference ag
 | TTS `session.audio()` with no id after `session.flush()` | Hangs: with no id it reads the request still being written. Pass the id `flush()` returns: `session.audio(session.flush())` |
 | Using a bare voice name (`jane`) as a TTS `voice_id` | `voice_not_found` — TTS takes the library slug, `aai-jane` |
 | Minting a TTS token with `POST` | Use `GET https://token.assemblyai.com/v1/token?product=tts&expires_in_seconds=60`; both query parameters are required |
+| Passing raw API key without `Bearer` to the MCP server | The STT, Dictation, and TTS APIs use raw `Authorization: KEY` without Bearer. The AssemblyAI MCP server adheres to HTTP Bearer auth: `Authorization: Bearer KEY` (or no header when using OAuth sign-in) |
+| Configuring MCP server with `stdio` instead of `http` | AssemblyAI MCP is a remote Streamable HTTP server — use `claude mcp add --transport http assemblyai https://mcp.assemblyai.com/mcp` |
 
 ## Reference Files
 
@@ -295,6 +298,7 @@ Read the relevant reference file based on what the user needs:
 
 | File | When to read |
 |------|-------------|
+| `references/mcp.md` | Remote MCP Server (`https://mcp.assemblyai.com/mcp`): Streamable HTTP endpoint, OAuth "Sign in with AssemblyAI" with no headers, Bearer API key auth, tools (`submit_transcript`, `get_transcript`, `understand_transcript`, `summarize_transcript`, `delete_transcript`), Claude Code & Cursor configuration |
 | `references/text-to-speech.md` | Text-to-Speech API: REST `/v1/speech` and WebSocket `/v1/ws`, recommended voice `aai-kyla`, 11 built-in voices plus the voice catalog, six languages, cloned voices by zone, limits and close codes, OpenAI-compatible route, Python (`TextToSpeech`, `TTSSession`)/Node SDK surface, barge-in, token minting |
 | `references/python-sdk.md` | Python SDK patterns and examples |
 | `references/js-sdk.md` | JavaScript/TypeScript SDK patterns |
