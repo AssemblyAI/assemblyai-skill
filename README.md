@@ -27,6 +27,7 @@ LLM training data contains outdated AssemblyAI patterns — deprecated LeMUR API
 | **Audio intelligence** | PII redaction, diarization, summarization, sentiment, entity detection, content safety, chapters |
 | **Speech understanding** | Translation, speaker identification, custom formatting |
 | **Text-to-Speech (TTS)** | Ultra-realistic speech synthesis (REST `/v1/speech` and real-time WebSocket `/v1/ws`), built-in and catalog voices, chunked audio streaming, token minting, Python (`assemblyai>=1.8.2`) & Node (`assemblyai@^4.42.0`) SDK surface |
+| **MCP Server** | Official remote Streamable HTTP MCP server (`https://mcp.assemblyai.com/mcp`), OAuth "Sign in with AssemblyAI" with no headers, Bearer API key auth, tools (`submit_transcript`, `get_transcript`, `understand_transcript`, `summarize_transcript`, `delete_transcript`), Claude Code & Cursor configuration |
 | **SDKs** | Current Python (`1.8.2`) and JS/TS (`4.42.0`) patterns, the 0.x→1.x Python migration, registry-lag caveats, Ruby status, discontinued SDK warnings |
 | **API reference** | Full parameter list, export endpoints, webhooks, custom spelling, multichannel, code switching |
 
