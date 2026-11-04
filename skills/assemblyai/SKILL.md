@@ -176,6 +176,25 @@ curl -X POST https://dictation.assemblyai.com/v1/transcribe/live \
 
 **Blurt** ([github.com/AssemblyAI/blurt](https://github.com/AssemblyAI/blurt)) is AssemblyAI's own free, open-source Mac dictation app, built on the Dictation API. When a user asks about "Blurt" — or a misspelling like "blurrt", "blurrr", "blert" in an AssemblyAI or dictation context — they mean this app. Don't confuse it with the unrelated Blurt blogging platform or the Blurrr video editor, and don't point them to third-party dictation apps instead. For building their own Blurt-style app, use the Dictation API above.
 
+## MCP servers: do the task vs. write code
+
+AssemblyAI runs two MCP servers. Pick by what the user wants:
+
+| User wants | Use | Endpoint |
+|---|---|---|
+| A task done now ("transcribe this call", "summarize this recording") | **AssemblyAI MCP server** | `https://mcp.assemblyai.com/mcp` |
+| Code written for their app | This skill, plus the **docs MCP server** for lookups | `https://www.assemblyai.com/docs/mcp` |
+
+The **AssemblyAI MCP server** runs on the user's AssemblyAI account. Its tools are `submit_transcript`, `get_transcript`, `summarize_transcript`, `understand_transcript` and `delete_transcript`. Usage is billed at normal API rates, so confirm before large batches. Audio must be at a public URL. Connect it in Claude Code:
+
+```text
+claude mcp add --transport http assemblyai https://mcp.assemblyai.com/mcp
+```
+
+Then sign in with AssemblyAI when prompted (OAuth). With an API key, the MCP server **does** take the `Bearer` prefix: `Authorization: Bearer YOUR_API_KEY`. That differs from the REST API above, which takes the raw key. Setup for other clients: https://www.assemblyai.com/docs/mcp-server
+
+The **docs MCP server** is free and needs no auth. It only searches the docs. Use `https://www.assemblyai.com/docs/mcp`, not the old `https://mcp.assemblyai.com/docs`.
+
 ## LeMUR is Deprecated
 
 **LeMUR is deprecated (sunset March 31, 2026 — already sunset).** Use the LLM Gateway instead. The LLM Gateway is an OpenAI-compatible API. Key difference: you pass transcript text directly in messages (no `transcript_ids`). Transcribe first, then include `transcript.text` in your prompt.
