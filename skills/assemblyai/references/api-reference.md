@@ -65,7 +65,7 @@ Submit an audio file for transcription. Send a JSON body with the parameters bel
 | `webhook_auth_header_name` | string | Custom header name for webhook authentication. |
 | `webhook_auth_header_value` | string | Custom header value for webhook authentication. |
 | `auto_highlights` | boolean | Enable key phrase detection. Default `false`. |
-| `speech_understanding` | object | Enable Speech Understanding inline. Features nest under `speech_understanding.request` (the `request` wrapper is required): `translation`, `speaker_identification`, and/or `custom_formatting`. See `speech-understanding.md`. |
+| `speech_understanding` | object | Enable Speech Understanding inline. Features nest under `speech_understanding.request` (the `request` wrapper is required): `translation`, `speaker_identification`, `custom_formatting`, `summarization`, and/or `action_items`. See `speech-understanding.md`. |
 | `speakers_expected` | integer | Hint for number of speakers (diarization). Deprecated in favor of `speaker_options`. |
 | `speaker_options` | object | Diarization options: `min_speakers_expected` (int, default 1), `max_speakers_expected` (int). |
 | `temperature` | float | 0–1. Controls randomness. Universal-3.5 Pro only. |

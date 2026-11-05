@@ -192,6 +192,10 @@ Generates a chaptered summary of the transcript — each chapter has timestamps,
 
 - `summary_type` (string, **required**): `"paragraph"` (longer, more detailed) or `"bullets"` (short, concise).
 - `effort` (string, default `"low"`): `"low"` or `"medium"`. `medium` spends more processing power for higher-quality summaries — use it for high-stakes meetings, multilingual audio, or very long audio (≈1.5h+). Default `low` is sufficient for most cases.
+- `headline_length` (string, optional): `"short"`, `"medium"`, or `"long"`. Controls the verbosity of chapter headlines (default `"medium"`).
+- `approximate_chapters` (integer, optional): Desired approximate number of chapters to divide the transcript into.
+
+> **SDK Support:** In **Python SDK ≥1.6.5**, pass `speech_understanding=aai.SpeechUnderstandingRequest(summarization=aai.SummarizationRequest(summary_type="bullets"))` in `TranscriptionConfig`. In **Node SDK ≥4.41.7**, `speech_understanding.request.summarization` is natively typed on `SpeechUnderstandingRequest`.
 
 ### Example
 
