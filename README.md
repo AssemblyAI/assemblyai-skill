@@ -131,3 +131,15 @@ The `assemblyai-workspace/` directory contains test results comparing skill vs. 
 | **Overall** | **17/17 (100%)** | **7/17 (41%)** |
 
 The skill provides the most value for voice agent integrations (where LLMs have no training data for framework-specific pitfalls) and LLM Gateway usage (where LLMs default to the deprecated LeMUR API). Evals were run with Claude Code but results should generalize to other agents.
+
+### Execution-graded results (Codex CLI)
+
+A second set of results, graded by running each agent's app and checking what the API applied (`GET /v2/transcript/{id}`, the streaming `Begin.configuration`), not by reading the code. Codex CLI with `gpt-6.1-sol`, AssemblyAI docs hosts blocked, four tasks (streaming clinic intake, async PII redaction, British spelling, legacy SDK upgrade), 10 runs per task per condition. Every run and the harness: [aatif101/assemblyai-200-not-done](https://github.com/aatif101/assemblyai-200-not-done).
+
+| Condition | Did what was asked | Ran but did not do it | Asked for a current model |
+|---|---|---|---|
+| Without skill | 38/40 | 2/40 | 12/40 |
+| With skill | 40/40 | 0/40 | 40/40 |
+| With skill + docs MCP | 40/40 | 0/40 | 40/40 |
+
+Without the skill, agents took model names from the Python SDK's `SpeechModel` enum. The streaming task is included as a runnable eval in [`evals/execution/streaming-clinic-intake/`](evals/execution/streaming-clinic-intake/).

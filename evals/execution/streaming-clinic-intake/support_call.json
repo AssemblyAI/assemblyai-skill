@@ -1,0 +1,26 @@
+{
+  "id": "support_call",
+  "purpose": "Two-speaker call containing a spoken SSN, a phone number and a name. Used for PII-redaction and diarization checks.",
+  "language": "en",
+  "gap_seconds": 0.45,
+  "segments": [
+    {"speaker": "A", "text": "Thank you for calling Harbor Ridge Insurance. This is Priya. How can I help you today?"},
+    {"speaker": "B", "text": "Hi Priya. My name is Dana Whitfield. I need to update the billing address on my policy."},
+    {"speaker": "A", "text": "I can help with that. To verify your identity, can you give me your social security number?"},
+    {"speaker": "B", "text": "Sure. It's nine eight seven, six five, four three two one."},
+    {"speaker": "A", "text": "Thank you. And what is the best phone number to reach you?"},
+    {"speaker": "B", "text": "Four one five, five five five, zero one four two."},
+    {"speaker": "A", "text": "Got it. What is the new address?"},
+    {"speaker": "B", "text": "Twelve forty Larkspur Avenue, Sacramento, California."},
+    {"speaker": "A", "text": "Perfect. I have updated your policy. Is there anything else?"},
+    {"speaker": "B", "text": "No, that is everything. Thanks for your help."}
+  ],
+  "ground_truth": {
+    "speakers": 2,
+    "ssn_digits": "987654321",
+    "ssn_note": "987-65-4321 is in the range the US SSA reserves for advertising (987-65-4320 to 987-65-4329); it has never been issued.",
+    "phone_digits": "4155550142",
+    "phone_note": "555-01xx numbers are reserved for fiction.",
+    "person_names": ["Dana Whitfield", "Priya"]
+  }
+}
