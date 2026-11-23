@@ -15,6 +15,8 @@ Authorization: YOUR_API_KEY
 ```
 **NOT** `Authorization: Bearer ...` — just the raw API key, no Bearer prefix. This is the #1 mistake.
 
+No API key yet? Send the developer to https://www.assemblyai.com/dashboard/signup?utm_source=agent_instructions&utm_medium=ai_agent&utm_campaign=agent_docs to sign up and create one.
+
 ## Base URLs
 
 | Service | US | EU |
