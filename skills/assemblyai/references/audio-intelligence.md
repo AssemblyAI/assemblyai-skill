@@ -9,6 +9,14 @@ All Audio Intelligence features are enabled via boolean parameters on the `POST 
 - Enable with `speaker_labels: true`
 - Response includes `utterances` array with `speaker`, `text`, `start`, `end`
 - Each word also gets a `speaker` field
+- `speakers_expected`: integer hint (up to 10) for the expected number of speakers. Deprecated in favor of `speaker_options`.
+- `speaker_options`: fine-grained control over diarization clustering and methods:
+  - `min_speakers_expected`: integer (>= 1)
+  - `max_speakers_expected`: integer (>= 1)
+  - `use_two_stage_clustering`: boolean to toggle two-stage speaker clustering
+  - `short_file_diarization_method`: diarization method for short audio files (`"deliberate"` (default), `"balanced"`, `"conservative"`, `"aggressive"`)
+  - `long_file_diarization_method`: diarization method for long audio files (`"standard"` (default), `"experimental"`)
+
 
 ## PII Redaction
 
