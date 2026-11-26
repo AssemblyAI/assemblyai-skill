@@ -69,6 +69,7 @@ The config accepts **exactly** these fields. An unknown field is rejected with `
 | `stt_prompt` | string | Max **6000** chars. Contextual *description* of the audio (e.g. `"A doctor dictating a patient visit note."`), prepended to the base transcription prompt, which always applies. Describes the situation — **not** instructions to the model. Also accepted as `prompt`; sending both → `400`. |
 | `keyterms_prompt` | string[] | Max **100 terms / 8000 chars total**. Exact strings to bias the decoder toward (names, drug names, SKUs, jargon). Same name as Streaming/Pre-recorded. Legacy aliases `keyterms` and `word_boost` are accepted — send **only one** of the three or the request is `400`. Keep it to genuinely hard terms; common words dilute the list. |
 | `llm_instruction` | string \| null | Max **2048** chars. Plain-English description of the rewrite you want. **Replaces** the default cleanup task (it does not add to it). Omitting the field or sending `null` keeps the default cleanup. |
+| `rewrite_mode` | string | `"fast"` (default) or `"smart"`. `"fast"` delivers lowest latency for real-time dictation; `"smart"` adheres more reliably to complex formatting rules and multi-paragraph restructuring. Supported in Python SDK ≥1.6.4 and Node SDK ≥4.41.6. |
 
 **The three knobs do different jobs.** `stt_prompt` and `keyterms_prompt` steer the ASR model *while it writes the transcript*; `llm_instruction` tells the LLM what to do with that transcript *afterwards*. They compose freely.
 
@@ -357,6 +358,7 @@ config = DictationConfig(
     stt_prompt="A doctor dictating a patient visit note.",
     keyterms_prompt=["amoxicillin", "lisinopril", "metoprolol"],
     llm_instruction="Remove filler words and rewrite as a concise clinical chart note.",
+    rewrite_mode="fast",  # "fast" (default) or "smart" (Python ≥1.6.4)
 )
 
 result = DictationTranscriber().transcribe_live("/path/to/local/recording.wav", config)
@@ -407,6 +409,7 @@ const result = await client.dictation.transcribeLive("/path/to/local/recording.w
   stt_prompt: "A doctor dictating a patient visit note.",
   keyterms_prompt: ["amoxicillin", "lisinopril", "metoprolol"],
   llm_instruction: "Remove filler words and rewrite as a concise clinical chart note.",
+  rewrite_mode: "fast", // "fast" (default) or "smart" (Node ≥4.41.6)
 });
 console.log(result.text);       // verbatim
 console.log(result.final_text); // rewrite, falling back to the transcript
@@ -415,6 +418,6 @@ console.log(result.final_text); // rewrite, falling back to the transcript
 - `client.dictation` is a `DictationTranscriber`. `transcribeLive(audio, config?, options?)` accepts a local path, data URL, `Uint8Array`/`ArrayBuffer`, `Blob`/`File`, a web `ReadableStream`, a Node stream, or any (async) iterable of `Uint8Array` chunks — **not an http(s) URL**. `options` = `{ timeout?: number /* default 300_000 ms, whole request */, signal?: AbortSignal }`.
 - `openLive(config?, options?)` returns a `DictationLiveSession` for callback-driven sources: `session.write(chunk)` (never blocks), `session.close()`, `await session.result()`, `session.abort()`.
 - Raw PCM: set `sample_rate` **and** `channels` (setting either marks the audio as PCM and both become required). Leave both unset for WAV.
-- `DictationConfig` is exactly `{ sample_rate, channels, language_codes, stt_prompt, keyterms_prompt, llm_instruction }` — there is no `model`, `prompt`, `timestamps`, or `conversation_context` (those are Sync STT).
+- `DictationConfig` is exactly `{ sample_rate, channels, language_codes, stt_prompt, keyterms_prompt, llm_instruction, rewrite_mode }` — there is no `model`, `prompt`, `timestamps`, or `conversation_context` (those are Sync STT).
 - Failures throw `DictationError` with `.status`, `.errorCode`, `.retryAfter`.
 - The chunked upload uses `fetch` with `duplex: "half"` under the hood, which is what lets the request start before the audio exists.
